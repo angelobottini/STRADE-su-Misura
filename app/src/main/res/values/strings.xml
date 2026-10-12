@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">STRADE su Misura</string>
+    <string name="app_tagline">Strumenti e scale di valutazione per terapisti occupazionali</string>
+    <string name="share_pdf_title">Condividi report PDF</string>
+</resources>

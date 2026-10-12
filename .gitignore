@@ -1,0 +1,29 @@
+# Gradle
+.gradle/
+build/
+.kotlin/
+!gradle/wrapper/gradle-wrapper.jar
+
+# Android / IDE
+local.properties
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+*.hprof
+
+# Signing material (never commit)
+keystore/
+*.jks
+*.p12
+*.keystore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+app/release/
+app/debug/
+dist/

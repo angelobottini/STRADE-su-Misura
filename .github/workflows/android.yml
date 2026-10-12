@@ -1,0 +1,103 @@
+name: Android CI
+
+on:
+  push:
+    branches: [ "main" ]
+    tags: [ "v*" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.STRADE_KEYSTORE_BASE64 != '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew
+
+      - name: Decode release keystore
+        if: env.HAS_KEYSTORE == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.STRADE_KEYSTORE_BASE64 }}
+        run: |
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/strade-release.p12"
+          echo "STRADE_KEYSTORE_FILE=$RUNNER_TEMP/strade-release.p12" >> "$GITHUB_ENV"
+
+      - name: Compute version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=1.0.0-build.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+          echo "code=${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+
+      - name: Build release and debug APKs
+        env:
+          STRADE_KEYSTORE_PASSWORD: ${{ secrets.STRADE_KEYSTORE_PASSWORD }}
+          STRADE_KEY_ALIAS: ${{ secrets.STRADE_KEY_ALIAS }}
+          STRADE_KEY_PASSWORD: ${{ secrets.STRADE_KEY_PASSWORD }}
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            -Pstrade.versionCode=${{ steps.version.outputs.code }} \
+            -Pstrade.versionName=${{ steps.version.outputs.name }} \
+            assembleRelease assembleDebug
+
+      - name: Collect APKs
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/release/app-release.apk "dist/STRADE-su-Misura-${{ steps.version.outputs.name }}.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/STRADE-su-Misura-${{ steps.version.outputs.name }}-debug.apk"
+          if [ -f app/build/outputs/mapping/release/mapping.txt ]; then
+            cp app/build/outputs/mapping/release/mapping.txt "dist/mapping-${{ steps.version.outputs.name }}.txt"
+          fi
+          ls -la dist
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: STRADE-su-Misura-release
+          path: |
+            dist/STRADE-su-Misura-${{ steps.version.outputs.name }}.apk
+            dist/mapping-*.txt
+          if-no-files-found: error
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: STRADE-su-Misura-debug
+          path: dist/*-debug.apk
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: STRADE su Misura ${{ steps.version.outputs.name }}
+          files: |
+            dist/STRADE-su-Misura-${{ steps.version.outputs.name }}.apk
+            dist/mapping-*.txt
+          generate_release_notes: true
