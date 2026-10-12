@@ -127,7 +127,7 @@ fun AssessmentFormScreen(
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                item { ProgressCard(score) }
+                item { ProgressCard(tool, score) }
                 item {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -179,7 +179,7 @@ fun AssessmentFormScreen(
                         }
                     }
                 }
-                itemsIndexed(tool.primaryItems, key = { _, item -> item.id }) { index, item ->
+                itemsIndexed(tool.answerableItems, key = { _, item -> item.id }) { index, item ->
                     val alternative = tool.alternativeFor(item.id)
                     val useAlternative = alternative != null && state.usesAlternative(item.id)
                     val shown = if (useAlternative && alternative != null) alternative else item
@@ -226,7 +226,7 @@ fun AssessmentFormScreen(
 }
 
 @Composable
-private fun ProgressCard(score: ScoreResult?) {
+private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?) {
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -235,7 +235,7 @@ private fun ProgressCard(score: ScoreResult?) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text(
-                        "PUNTEGGIO ATTUALE",
+                        tool.totalLabel.uppercase(),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
@@ -281,6 +281,15 @@ private fun ProgressCard(score: ScoreResult?) {
             } else {
                 Text(
                     "Completa tutte le voci per ottenere l'interpretazione del punteggio.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            val computedHint = tool.headlineItem?.takeIf { it.isComputed }?.hint
+            if (computedHint != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    computedHint,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )

@@ -14,9 +14,9 @@ diagonale color malva `#C7ADBF`), tipografia geometrica e un'interfaccia pulita 
   - **Indice di Barthel Modificato** (Shah, Vanclay e Cooper, 1989): 10 attività di base della vita
     quotidiana con cinque livelli ponderati, punteggio 0–100 e fasce interpretative.
   - **Osservazione ADL** (linee guida olandesi per l'aprassia, Hogeschool van Amsterdam e NVE 2003;
-    versione italiana Università di Verona 2012): osservazione di un compito con punteggio di
-    indipendenza 0–3 e valutazione delle fasi di orientamento, esecuzione e controllo, ciascuna
-    con le proprie osservazioni.
+    versione italiana Università di Verona 2012): osservazione di un compito con valutazione 0–3
+    delle fasi di orientamento, esecuzione e controllo; il punteggio di indipendenza è calcolato
+    automaticamente come il livello più alto tra le tre fasi.
 - **Compilazione guidata** – livelli descritti per esteso, punteggio e completamento aggiornati in
   tempo reale, gestione dell'alternativa deambulazione/carrozzina, data, valutatore, contesto e
   osservazioni. Le valutazioni incomplete si salvano come parziali.

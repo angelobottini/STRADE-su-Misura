@@ -126,8 +126,8 @@ fun ToolCard(
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 InfoPill(tool.duration)
-                InfoPill("${tool.primaryItems.size} attività")
-                InfoPill("Punteggio 0–${tool.maxScore}")
+                InfoPill("${tool.answerableItems.size} ${tool.itemNounPlural}")
+                InfoPill("${tool.totalLabel} 0–${tool.maxScore}")
             }
             Spacer(Modifier.height(16.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {

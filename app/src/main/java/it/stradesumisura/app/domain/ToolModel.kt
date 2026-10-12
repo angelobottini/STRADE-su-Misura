@@ -1,9 +1,12 @@
 package it.stradesumisura.app.domain
 
+import kotlin.math.abs
+
 /**
  * Modello generico di uno strumento di valutazione (scala o scheda di osservazione).
  * Ogni strumento è una lista di item con opzioni a punteggio; opzionalmente raccoglie campi di
- * testo aggiuntivi (es. il compito osservato) e una nota libera per ciascun item.
+ * testo aggiuntivi (es. il compito osservato) e una nota libera per ciascun item. Un item può
+ * essere calcolato automaticamente a partire da altri item (vedi [ComputedScore]).
  * Per aggiungere uno strumento: creare una [ToolDefinition] e registrarla in [ToolRegistry].
  */
 data class ToolOption(
@@ -11,6 +14,12 @@ data class ToolOption(
     val title: String,
     val description: String,
 )
+
+/** Regola di calcolo automatico del punteggio di un item a partire da altri item. */
+sealed interface ComputedScore {
+    /** Il punteggio è il massimo (cioè il peggiore) tra quelli degli item indicati. */
+    data class MaxOf(val itemIds: List<String>) : ComputedScore
+}
 
 data class ToolItem(
     val id: String,
@@ -24,8 +33,11 @@ data class ToolItem(
     val alternativeOf: String? = null,
     /** Se valorizzato, per l'item viene raccolta una nota libera con questa etichetta. */
     val noteLabel: String? = null,
+    /** Se valorizzato, l'item non viene compilato ma calcolato automaticamente. */
+    val computed: ComputedScore? = null,
 ) {
     val maxScore: Int get() = options.maxOf { it.score }
+    val isComputed: Boolean get() = computed != null
 }
 
 /** Campo di testo raccolto prima degli item (es. compito osservato, diagnosi). */
@@ -62,7 +74,7 @@ data class AssessmentAnswers(
     val fields: Map<String, String> = emptyMap(),
 )
 
-/** L'opzione effettivamente selezionata per un item principale, eventualmente tramite l'alternativa. */
+/** L'opzione effettivamente selezionata (o calcolata) per un item principale. */
 data class Selection(
     val item: ToolItem,
     val optionIndex: Int,
@@ -109,15 +121,18 @@ data class ToolDefinition(
     /** Campo il cui valore riassume la valutazione negli elenchi (es. il compito osservato). */
     val summaryFieldId: String? = null,
 ) {
-    /** Item che concorrono al punteggio (le alternative si raggiungono dal loro item principale). */
+    /** Item mostrati nei riepiloghi (le alternative si raggiungono dal loro item principale). */
     val primaryItems: List<ToolItem> = items.filter { it.alternativeOf == null }
 
-    /** True quando il punteggio principale è la somma degli item. */
+    /** Item che il valutatore compila (esclusi quelli calcolati automaticamente). */
+    val answerableItems: List<ToolItem> = primaryItems.filter { !it.isComputed }
+
+    /** True quando il punteggio principale è la somma degli item compilati. */
     val sumsItems: Boolean get() = headlineItemId == null
 
-    val maxScore: Int = headlineItemId
-        ?.let { id -> items.firstOrNull { it.id == id }?.maxScore }
-        ?: primaryItems.sumOf { it.maxScore }
+    val headlineItem: ToolItem? = headlineItemId?.let { id -> items.firstOrNull { it.id == id } }
+
+    val maxScore: Int = headlineItem?.maxScore ?: answerableItems.sumOf { it.maxScore }
 
     fun item(id: String): ToolItem? = items.firstOrNull { it.id == id }
 
@@ -127,8 +142,25 @@ data class ToolDefinition(
 
     fun bandFor(total: Int): ScoreBand? = bands.firstOrNull { it.contains(total) }
 
-    /** Risolve la selezione di un item principale: prima la sua risposta, poi quella dell'alternativa. */
+    /** Valore di un item calcolato, oppure null se manca anche uno solo degli item di origine. */
+    fun computedValue(item: ToolItem, answers: Map<String, Int>): Int? = when (val rule = item.computed) {
+        null -> null
+        is ComputedScore.MaxOf -> {
+            val scores = rule.itemIds.map { id -> item(id)?.let { source -> selectionFor(source, answers)?.option?.score } }
+            if (scores.any { it == null }) null else scores.filterNotNull().maxOrNull()
+        }
+    }
+
+    /**
+     * Risolve la selezione di un item principale: per gli item calcolati l'opzione con il punteggio
+     * derivato; per gli altri la risposta dell'item stesso, poi quella della sua alternativa.
+     */
     fun selectionFor(primary: ToolItem, answers: Map<String, Int>): Selection? {
+        if (primary.isComputed) {
+            val value = computedValue(primary, answers) ?: return null
+            val index = primary.options.indices.minByOrNull { abs(primary.options[it].score - value) } ?: return null
+            return Selection(primary, index, primary.options[index], isAlternative = false)
+        }
         answers[primary.id]?.let { index ->
             primary.options.getOrNull(index)?.let { return Selection(primary, index, it, isAlternative = false) }
         }
@@ -142,10 +174,11 @@ data class ToolDefinition(
 
     /** answers: itemId -> indice opzione. */
     fun score(answers: Map<String, Int>): ScoreResult {
-        val selected = primaryItems.mapNotNull { selectionFor(it, answers) }
-        val complete = selected.size == primaryItems.size
-        val total = if (headlineItemId != null) {
-            item(headlineItemId)?.let { headline -> selectionFor(headline, answers)?.option?.score } ?: 0
+        val selected = answerableItems.mapNotNull { selectionFor(it, answers) }
+        val complete = selected.size == answerableItems.size
+        val headline = headlineItem
+        val total = if (headline != null) {
+            selectionFor(headline, answers)?.option?.score ?: 0
         } else {
             selected.sumOf { it.option.score }
         }
@@ -153,7 +186,7 @@ data class ToolDefinition(
             total = total,
             max = maxScore,
             answered = selected.size,
-            required = primaryItems.size,
+            required = answerableItems.size,
             band = if (complete) bandFor(total) else null,
         )
     }

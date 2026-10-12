@@ -1,5 +1,6 @@
 package it.stradesumisura.app.domain.tools
 
+import it.stradesumisura.app.domain.ComputedScore
 import it.stradesumisura.app.domain.ScoreBand
 import it.stradesumisura.app.domain.ToolDefinition
 import it.stradesumisura.app.domain.ToolField
@@ -14,13 +15,19 @@ import it.stradesumisura.app.domain.ToolOption
  * italiana a cura del Centro di Ricerca in Riabilitazione Neuromotoria e Cognitiva
  * dell'Università degli Studi di Verona (2012).
  *
- * Il terapista registra il grado di indipendenza complessivo (punteggio principale, 0–3) e
- * valuta con la stessa scala le tre fasi dell'azione: orientamento, esecuzione e controllo,
- * annotando per ciascuna le osservazioni.
+ * Il terapista valuta con una scala 0–3 le tre fasi dell'azione (orientamento, esecuzione,
+ * controllo). Il punteggio di indipendenza del compito è calcolato automaticamente come il
+ * livello più alto tra le tre fasi: il bisogno di supporto anche in una sola fase compromette
+ * l'intero compito.
  */
 object AdlObservation {
 
     const val ID = "adl_observation"
+
+    private const val ORIENTATION = "orientation"
+    private const val EXECUTION = "execution"
+    private const val CONTROL = "control"
+    private const val INDEPENDENCE = "independence"
 
     private val independenceOptions = listOf(
         ToolOption(
@@ -84,19 +91,21 @@ object AdlObservation {
             "trattamento dell'aprassia conseguente a ictus dell'emisfero sinistro (Hogeschool van Amsterdam e " +
             "Associazione Olandese di Ergoterapia, 2003), nella versione italiana del Centro di Ricerca in " +
             "Riabilitazione Neuromotoria e Cognitiva dell'Università degli Studi di Verona (2012). Il terapista " +
-            "osserva l'esecuzione di un compito concreto e registra il grado di indipendenza complessivo e la " +
-            "qualità della performance nelle tre fasi dell'azione, orientamento, esecuzione e controllo, usando " +
-            "la stessa scala a quattro livelli: 0 = autonomia completa, 1 = intervento verbale, " +
-            "2 = intervento fisico, 3 = incapacità di completare il compito.",
+            "osserva l'esecuzione di un compito concreto e valuta, con una scala a quattro livelli " +
+            "(0 = autonomia completa, 1 = intervento verbale, 2 = intervento fisico, 3 = incapacità di " +
+            "completare), la qualità della performance nelle tre fasi dell'azione: orientamento, esecuzione e " +
+            "controllo. Il punteggio di indipendenza del compito è calcolato automaticamente come il livello " +
+            "più alto tra le tre fasi, perché il bisogno di supporto anche in una sola fase compromette " +
+            "l'intero compito.",
         instructions = listOf(
             "Scegliere un compito significativo per la persona e osservarne l'esecuzione completa nel " +
                 "contesto reale, dopo aver fornito le istruzioni iniziali. Ogni scheda si riferisce a un " +
                 "singolo compito: per osservare più compiti compilare una scheda per ciascuno.",
             "Registrare nelle osservazioni ciò che si vede: errori, strategie, tipo di aiuto necessario, tempi.",
-            "Assegnare il punteggio di indipendenza complessivo: 0 = autonomia completa; 1 = intervento " +
-                "verbale; 2 = intervento fisico; 3 = incapace di completare il compito.",
-            "Valutare con la stessa scala ciascuna fase (orientamento, esecuzione, controllo) e annotare le " +
-                "osservazioni specifiche di ogni fase.",
+            "Valutare ciascuna fase (orientamento, esecuzione, controllo) con la scala: 0 = autonomia " +
+                "completa; 1 = intervento verbale; 2 = intervento fisico; 3 = fase non completata.",
+            "Il punteggio di indipendenza del compito si calcola da solo: è il livello più alto rilevato " +
+                "nelle tre fasi.",
             "Un punteggio più basso indica maggiore autonomia: 0 è il risultato migliore, 3 il peggiore.",
         ),
         reference = "Istituto Superiore di Amsterdam (Hogeschool van Amsterdam) / Associazione Olandese di " +
@@ -111,13 +120,7 @@ object AdlObservation {
         ),
         items = listOf(
             ToolItem(
-                id = "independence",
-                title = "Indipendenza",
-                hint = "Grado di autonomia complessivo nell'esecuzione del compito osservato.",
-                options = independenceOptions,
-            ),
-            ToolItem(
-                id = "orientation",
+                id = ORIENTATION,
                 title = "Fase di orientamento",
                 hint = "Preparazione all'esecuzione: orientamento rispetto all'ambiente, al compito e alle proprie abilità.",
                 description = "La fase di orientamento è la prima fase e prevede la preparazione all'esecuzione " +
@@ -125,11 +128,10 @@ object AdlObservation {
                     "all'ambiente che lo circonda, al compito che deve svolgere e alle proprie abilità. Durante la " +
                     "fase di orientamento prende forma il concetto mentale, che comprende il piano d'azione e " +
                     "l'esito finale dell'esecuzione del compito.",
-                noteLabel = "Osservazioni sulla fase di orientamento",
                 options = phaseOptions("orientamento"),
             ),
             ToolItem(
-                id = "execution",
+                id = EXECUTION,
                 title = "Fase di esecuzione",
                 hint = "Realizzazione del piano d'azione: avvio, svolgimento e conclusione del compito al momento giusto.",
                 description = "La seconda fase consiste nell'esecuzione del piano d'azione. Il compito viene " +
@@ -137,11 +139,10 @@ object AdlObservation {
                     "incentrata sulla parte visibile dello svolgimento del compito. Vengono osservati aspetti come " +
                     "la fluidità dell'azione motoria, la correlazione temporale tra un movimento e quello " +
                     "successivo, l'interruzione dell'azione quando il compito è completato.",
-                noteLabel = "Osservazioni sulla fase di esecuzione",
                 options = phaseOptions("esecuzione"),
             ),
             ToolItem(
-                id = "control",
+                id = CONTROL,
                 title = "Fase di controllo",
                 hint = "Verifica continua della propria performance rispetto a oggetti, ambiente e risultato.",
                 description = "La terza fase della performance occupazionale è quella di controllo. Durante lo " +
@@ -152,8 +153,15 @@ object AdlObservation {
                     "interiorizzato del compito, presente nella memoria di lavoro. In questo modo il cliente può " +
                     "controllare se il suo modo di agire (il processo) e il risultato (il «prodotto» " +
                     "dell'esecuzione del compito) sono in linea con il piano d'azione scelto e predisposto.",
-                noteLabel = "Osservazioni sulla fase di controllo",
                 options = phaseOptions("controllo"),
+            ),
+            ToolItem(
+                id = INDEPENDENCE,
+                title = "Indipendenza",
+                hint = "Calcolata automaticamente: è il livello più alto rilevato nelle tre fasi, perché il " +
+                    "bisogno di supporto anche in una sola fase compromette l'intero compito.",
+                options = independenceOptions,
+                computed = ComputedScore.MaxOf(listOf(ORIENTATION, EXECUTION, CONTROL)),
             ),
         ),
         bands = listOf(
@@ -166,12 +174,12 @@ object AdlObservation {
             ScoreBand(3, 3, "Dipendenza",
                 "Il compito non viene portato a termine nonostante gli interventi verbali e fisici.", 0xFFB4455A),
         ),
-        headlineItemId = "independence",
+        headlineItemId = INDEPENDENCE,
         totalLabel = "Indipendenza",
-        itemNounSingular = "elemento",
-        itemNounPlural = "elementi",
-        itemsSectionTitle = "Elementi osservati",
-        notesLabel = "Osservazioni generali",
+        itemNounSingular = "fase",
+        itemNounPlural = "fasi",
+        itemsSectionTitle = "Fasi del compito",
+        notesLabel = "Osservazioni",
         notesHint = "Descrizione dell'esecuzione del compito: errori, strategie, tipo di aiuto, tempi.",
         summaryFieldId = "task",
     )

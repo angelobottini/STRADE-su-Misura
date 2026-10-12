@@ -191,11 +191,12 @@ fun AssessmentDetailScreen(
                     }
                 }
                 item { SectionHeader(tool.itemsSectionTitle) }
-                itemsIndexed(tool.primaryItems, key = { _, item -> item.id }) { index, item ->
+                itemsIndexed(tool.primaryItems, key = { _, item -> item.id }) { _, item ->
                     val selection = tool.selectionFor(item, state.answers)
                     val noteKey = selection?.item?.id ?: item.id
+                    val number = tool.answerableItems.indexOf(item).takeIf { it >= 0 }?.let { "${it + 1}" } ?: "="
                     DetailRow(
-                        number = index + 1,
+                        number = number,
                         item = item,
                         selection = selection,
                         note = state.answers.itemNotes[noteKey] ?: state.answers.itemNotes[item.id],
@@ -336,12 +337,12 @@ fun ScoreBar(bands: List<ScoreBand>, maxScore: Int, score: Int?, modifier: Modif
 }
 
 @Composable
-private fun DetailRow(number: Int, item: ToolItem, selection: Selection?, note: String?) {
+private fun DetailRow(number: String, item: ToolItem, selection: Selection?, note: String?) {
     val shown = selection?.item ?: item
     Surface(
         shape = MaterialTheme.shapes.medium,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        color = if (item.isComputed) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (item.isComputed) MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
@@ -349,10 +350,14 @@ private fun DetailRow(number: Int, item: ToolItem, selection: Selection?, note: 
                 Modifier
                     .size(28.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+                    .background(if (item.isComputed) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceContainerHigh),
                 contentAlignment = Alignment.Center,
             ) {
-                Text("$number", style = MaterialTheme.typography.labelMedium)
+                Text(
+                    number,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (item.isComputed) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurface,
+                )
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -360,6 +365,13 @@ private fun DetailRow(number: Int, item: ToolItem, selection: Selection?, note: 
                 if (selection?.isAlternative == true) {
                     Text(
                         "in alternativa a «${item.title}»",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
+                if (item.isComputed) {
+                    Text(
+                        item.hint ?: "Calcolato automaticamente",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.secondary,
                     )

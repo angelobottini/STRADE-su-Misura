@@ -88,7 +88,7 @@ fun ToolInfoScreen(
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             InfoPill(tool.duration)
-                            InfoPill("${tool.primaryItems.size} ${tool.itemNounPlural}")
+                            InfoPill("${tool.answerableItems.size} ${tool.itemNounPlural}")
                             InfoPill("${tool.totalLabel} 0–${tool.maxScore}")
                         }
                     }
@@ -126,7 +126,8 @@ fun ToolInfoScreen(
                 }
                 item {
                     InfoSection(tool.itemsSectionTitle) {
-                        tool.primaryItems.forEachIndexed { index, item ->
+                        tool.primaryItems.forEach { item ->
+                            val number = tool.answerableItems.indexOf(item).takeIf { it >= 0 }?.let { "${it + 1}. " } ?: ""
                             Row(
                                 Modifier
                                     .fillMaxWidth()
@@ -134,7 +135,7 @@ fun ToolInfoScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    "${index + 1}. ${item.title}",
+                                    if (item.isComputed) "$number${item.title} (calcolata automaticamente)" else "$number${item.title}",
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.weight(1f),
                                 )
@@ -144,7 +145,7 @@ fun ToolInfoScreen(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                            item.description?.let { description ->
+                            (item.description ?: item.hint?.takeIf { item.isComputed })?.let { description ->
                                 Text(
                                     description,
                                     style = MaterialTheme.typography.bodySmall,

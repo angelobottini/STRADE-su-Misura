@@ -166,11 +166,17 @@ class AssessmentPdfExporter(private val context: Context) {
         blocks += sectionTitle(tool.itemsSectionTitle)
         val header = tableHeaderBlock(tool)
         blocks += header
+        var number = 0
         tool.primaryItems.forEachIndexed { index, item ->
             val selection = tool.selectionFor(item, answers)
             val noteKey = selection?.item?.id ?: item.id
             val note = answers.itemNotes[noteKey] ?: answers.itemNotes[item.id]
-            blocks += rowBlock(index + 1, item, selection, note, index % 2 == 1, header)
+            if (item.isComputed) {
+                blocks += rowBlock("", item, selection, note, zebra = false, header = header, emphasised = true)
+            } else {
+                number += 1
+                blocks += rowBlock("$number.", item, selection, note, index % 2 == 1, header, emphasised = false)
+            }
         }
         if (tool.sumsItems) {
             blocks += totalRowBlock(score, tool, header)
@@ -383,28 +389,34 @@ class AssessmentPdfExporter(private val context: Context) {
     }
 
     private fun rowBlock(
-        number: Int,
+        numberLabel: String,
         item: ToolItem,
         selection: Selection?,
         note: String?,
         zebra: Boolean,
         header: PdfBlock,
+        emphasised: Boolean,
     ): PdfBlock {
         val padding = 7f
         val titlePaint = textPaint(9f, PdfPalette.ink, PdfFonts.bold)
-        val subPaint = textPaint(7.3f, PdfPalette.muted)
-        val levelPaint = textPaint(8.8f, PdfPalette.ink, PdfFonts.medium)
+        val subPaint = textPaint(7.3f, if (emphasised) PdfPalette.mauveDeep else PdfPalette.muted)
+        val levelPaint = textPaint(8.8f, PdfPalette.ink, if (emphasised) PdfFonts.bold else PdfFonts.medium)
         val missingPaint = textPaint(8.8f, PdfPalette.muted, PdfFonts.italic)
         val descPaint = textPaint(7.6f, PdfPalette.graphite)
         val notePaint = textPaint(7.6f, PdfPalette.ink, PdfFonts.italic)
-        val scorePaint = textPaint(9.5f, PdfPalette.ink, PdfFonts.bold, align = Paint.Align.RIGHT)
+        val scorePaint = textPaint(if (emphasised) 11f else 9.5f, PdfPalette.ink, if (emphasised) PdfFonts.black else PdfFonts.bold, align = Paint.Align.RIGHT)
         val maxPaint = textPaint(7f, PdfPalette.muted, align = Paint.Align.RIGHT)
 
         val shownItem = selection?.item ?: item
-        val title = "$number. ${shownItem.title}"
-        val subtitle = if (selection?.isAlternative == true) "in alternativa a «${item.title}»" else null
-        val levelTitle = selection?.option?.title ?: "Non valutato"
-        val description = selection?.option?.description ?: "Nessun livello selezionato."
+        val title = if (numberLabel.isBlank()) shownItem.title else "$numberLabel ${shownItem.title}"
+        val subtitle = when {
+            selection?.isAlternative == true -> "in alternativa a «${item.title}»"
+            item.isComputed -> item.hint ?: "Calcolato automaticamente"
+            else -> null
+        }
+        val levelTitle = selection?.option?.title ?: if (item.isComputed) "In attesa delle fasi" else "Non valutato"
+        val description = selection?.option?.description
+            ?: if (item.isComputed) "Il valore viene calcolato quando tutte le voci di origine sono compilate." else "Nessun livello selezionato."
         val noteText = note?.trim()?.takeIf { it.isNotEmpty() }?.let { "Osservazioni: $it" }
         val maxScore = shownItem.maxScore
 
@@ -422,7 +434,12 @@ class AssessmentPdfExporter(private val context: Context) {
 
         return DrawBlock(heightOf = { heights(it).first }, continuationHeader = header) { canvas, x, y, width, h ->
             val (_, leftW, midW) = heights(width)
-            if (zebra) canvas.drawRect(x, y, x + width, y + h, fillPaint(PdfPalette.zebra))
+            if (emphasised) {
+                canvas.drawRect(x, y, x + width, y + h, fillPaint(PdfPalette.mauveSoft))
+                canvas.drawLine(x, y + 0.5f, x + width, y + 0.5f, strokePaint(PdfPalette.ink, 1f))
+            } else if (zebra) {
+                canvas.drawRect(x, y, x + width, y + h, fillPaint(PdfPalette.zebra))
+            }
             canvas.drawLine(x, y + h, x + width, y + h, strokePaint(PdfPalette.rule, 0.5f))
 
             val top = y + padding
