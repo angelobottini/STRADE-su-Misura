@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -174,16 +175,35 @@ fun AssessmentDetailScreen(
                                 LabeledValue("Valutatore", data.assessment.evaluator?.takeIf { it.isNotBlank() } ?: "—", Modifier.weight(1f))
                                 LabeledValue("Contesto", data.assessment.setting?.takeIf { it.isNotBlank() } ?: "—", Modifier.weight(1f))
                             }
+                            tool.fields.chunked(2).forEach { pair ->
+                                Row {
+                                    pair.forEach { field ->
+                                        LabeledValue(
+                                            field.label,
+                                            state.answers.fields[field.id]?.takeIf { it.isNotBlank() } ?: "—",
+                                            Modifier.weight(1f),
+                                        )
+                                    }
+                                    if (pair.size == 1) Spacer(Modifier.weight(1f))
+                                }
+                            }
                         }
                     }
                 }
-                item { SectionHeader("Dettaglio delle attività") }
+                item { SectionHeader(tool.itemsSectionTitle) }
                 itemsIndexed(tool.primaryItems, key = { _, item -> item.id }) { index, item ->
-                    DetailRow(number = index + 1, item = item, selection = tool.selectionFor(item, state.answers))
+                    val selection = tool.selectionFor(item, state.answers)
+                    val noteKey = selection?.item?.id ?: item.id
+                    DetailRow(
+                        number = index + 1,
+                        item = item,
+                        selection = selection,
+                        note = state.answers.itemNotes[noteKey] ?: state.answers.itemNotes[item.id],
+                    )
                 }
                 val notes = data.assessment.notes
                 if (!notes.isNullOrBlank()) {
-                    item { NotesCard(title = "Osservazioni", text = notes) }
+                    item { NotesCard(title = tool.notesLabel, text = notes) }
                 }
                 item {
                     Text(
@@ -220,7 +240,7 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult) {
     ) {
         Column(Modifier.padding(20.dp)) {
             Text(
-                "PUNTEGGIO TOTALE",
+                tool.totalLabel.uppercase(),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.secondary,
             )
@@ -240,7 +260,7 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult) {
                 Text(band.description, style = MaterialTheme.typography.bodyMedium)
             } else {
                 Text(
-                    "Valutazione parziale: ${score.answered} attività su ${score.required}. " +
+                    "Valutazione parziale: ${score.answered} ${tool.itemNounPlural} su ${score.required}. " +
                         "Completa la valutazione per ottenere l'interpretazione.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
@@ -269,7 +289,7 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult) {
 private fun bandWeights(bands: List<ScoreBand>, maxScore: Int): List<Float> =
     bands.map { max((it.max - it.min + 1).toFloat() / (maxScore + 1).toFloat(), 0.085f) }
 
-/** Horizontal interpretation bar with a marker on the current score. */
+/** Barra interpretativa orizzontale con l'indicatore del punteggio corrente. */
 @Composable
 fun ScoreBar(bands: List<ScoreBand>, maxScore: Int, score: Int?, modifier: Modifier = Modifier) {
     val markerColor = MaterialTheme.colorScheme.onSurface
@@ -316,7 +336,7 @@ fun ScoreBar(bands: List<ScoreBand>, maxScore: Int, score: Int?, modifier: Modif
 }
 
 @Composable
-private fun DetailRow(number: Int, item: ToolItem, selection: Selection?) {
+private fun DetailRow(number: Int, item: ToolItem, selection: Selection?, note: String?) {
     val shown = selection?.item ?: item
     Surface(
         shape = MaterialTheme.shapes.medium,
@@ -350,6 +370,16 @@ private fun DetailRow(number: Int, item: ToolItem, selection: Selection?) {
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (selection == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 )
+                val trimmedNote = note?.trim()
+                if (!trimmedNote.isNullOrEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        trimmedNote,
+                        style = MaterialTheme.typography.bodySmall,
+                        fontStyle = FontStyle.Italic,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             Spacer(Modifier.width(12.dp))
             Column(horizontalAlignment = Alignment.End) {

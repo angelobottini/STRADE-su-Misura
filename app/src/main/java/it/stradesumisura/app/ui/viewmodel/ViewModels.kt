@@ -17,6 +17,7 @@ import it.stradesumisura.app.data.db.AssessmentWithPerson
 import it.stradesumisura.app.data.db.PersonEntity
 import it.stradesumisura.app.data.db.PersonWithCount
 import it.stradesumisura.app.domain.AnswersCodec
+import it.stradesumisura.app.domain.AssessmentAnswers
 import it.stradesumisura.app.domain.ScoreResult
 import it.stradesumisura.app.domain.ToolDefinition
 import it.stradesumisura.app.domain.ToolRegistry
@@ -223,7 +224,7 @@ data class AssessmentFormState(
     val date: LocalDate = Dates.today(),
     val evaluator: String = "",
     val setting: String = "",
-    val answers: Map<String, Int> = emptyMap(),
+    val answers: AssessmentAnswers = AssessmentAnswers(),
     /** id item principale -> true quando si sta usando l'item alternativo. */
     val alternativeModes: Map<String, Boolean> = emptyMap(),
     val notes: String = "",
@@ -263,7 +264,7 @@ class AssessmentFormViewModel(container: AppContainer, handle: SavedStateHandle)
             val answers = AnswersCodec.decode(data.assessment.answersJson)
             val modes = tool?.primaryItems.orEmpty()
                 .mapNotNull { primary ->
-                    tool?.alternativeFor(primary.id)?.let { alternative -> primary.id to answers.containsKey(alternative.id) }
+                    tool?.alternativeFor(primary.id)?.let { alternative -> primary.id to answers.items.containsKey(alternative.id) }
                 }
                 .toMap()
             existing = data.assessment
@@ -298,22 +299,30 @@ class AssessmentFormViewModel(container: AppContainer, handle: SavedStateHandle)
     fun setSetting(value: String) = _state.update { it.copy(setting = value, dirty = true) }
     fun setNotes(value: String) = _state.update { it.copy(notes = value, dirty = true) }
 
+    fun setField(fieldId: String, value: String) = _state.update { current ->
+        current.copy(answers = current.answers.copy(fields = current.answers.fields + (fieldId to value)), dirty = true)
+    }
+
+    fun setItemNote(itemId: String, value: String) = _state.update { current ->
+        current.copy(answers = current.answers.copy(itemNotes = current.answers.itemNotes + (itemId to value)), dirty = true)
+    }
+
     fun select(itemId: String, optionIndex: Int) {
         val tool = _state.value.tool ?: return
         val item = tool.item(itemId) ?: return
         _state.update { current ->
-            val answers = current.answers.toMutableMap()
+            val items = current.answers.items.toMutableMap()
             val modes = current.alternativeModes.toMutableMap()
-            answers[itemId] = optionIndex
+            items[itemId] = optionIndex
             item.alternativeOf?.let { primaryId ->
-                answers.remove(primaryId)
+                items.remove(primaryId)
                 modes[primaryId] = true
             }
             tool.alternativeFor(itemId)?.let { alternative ->
-                answers.remove(alternative.id)
+                items.remove(alternative.id)
                 modes[itemId] = false
             }
-            current.copy(answers = answers, alternativeModes = modes, dirty = true)
+            current.copy(answers = current.answers.copy(items = items), alternativeModes = modes, dirty = true)
         }
     }
 
@@ -321,10 +330,10 @@ class AssessmentFormViewModel(container: AppContainer, handle: SavedStateHandle)
         val tool = _state.value.tool ?: return
         val alternative = tool.alternativeFor(primaryId) ?: return
         _state.update { current ->
-            val answers = current.answers.toMutableMap()
-            if (useAlternative) answers.remove(primaryId) else answers.remove(alternative.id)
+            val items = current.answers.items.toMutableMap()
+            if (useAlternative) items.remove(primaryId) else items.remove(alternative.id)
             current.copy(
-                answers = answers,
+                answers = current.answers.copy(items = items),
                 alternativeModes = current.alternativeModes + (primaryId to useAlternative),
                 dirty = true,
             )
@@ -370,7 +379,7 @@ class AssessmentFormViewModel(container: AppContainer, handle: SavedStateHandle)
 data class AssessmentDetailUiState(
     val data: AssessmentWithPerson? = null,
     val tool: ToolDefinition? = null,
-    val answers: Map<String, Int> = emptyMap(),
+    val answers: AssessmentAnswers = AssessmentAnswers(),
     val score: ScoreResult? = null,
     val loading: Boolean = true,
 )

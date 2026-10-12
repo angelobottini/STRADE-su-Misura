@@ -51,6 +51,7 @@ import it.stradesumisura.app.ui.components.LabeledValue
 import it.stradesumisura.app.ui.components.SectionHeader
 import it.stradesumisura.app.ui.components.ShortNameBadge
 import it.stradesumisura.app.ui.components.StradeTopBar
+import it.stradesumisura.app.ui.components.assessmentSummary
 import it.stradesumisura.app.ui.components.personMeta
 import it.stradesumisura.app.ui.viewmodel.AppViewModelFactory
 import it.stradesumisura.app.ui.viewmodel.PersonDetailViewModel
@@ -159,6 +160,7 @@ fun PersonDetailScreen(
                             title = tool?.name ?: assessment.toolId,
                             tool = tool,
                             subtitle = listOfNotNull(
+                                assessmentSummary(tool, assessment),
                                 Dates.formatIsoLong(assessment.date),
                                 assessment.evaluator?.takeIf { it.isNotBlank() },
                             ).joinToString(" · "),

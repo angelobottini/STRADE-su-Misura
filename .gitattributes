@@ -3,3 +3,5 @@
 *.jar binary
 *.png binary
 *.p12 binary
+*.ttf binary
+*.otf binary

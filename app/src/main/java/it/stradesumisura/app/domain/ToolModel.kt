@@ -1,9 +1,10 @@
 package it.stradesumisura.app.domain
 
 /**
- * Generic model of an assessment tool (scale). Every tool is a list of items, each with a set of
- * scored options; the sum of the selected options gives the total, interpreted through bands.
- * New tools are added by creating a [ToolDefinition] and registering it in [ToolRegistry].
+ * Modello generico di uno strumento di valutazione (scala o scheda di osservazione).
+ * Ogni strumento è una lista di item con opzioni a punteggio; opzionalmente raccoglie campi di
+ * testo aggiuntivi (es. il compito osservato) e una nota libera per ciascun item.
+ * Per aggiungere uno strumento: creare una [ToolDefinition] e registrarla in [ToolRegistry].
  */
 data class ToolOption(
     val score: Int,
@@ -15,12 +16,28 @@ data class ToolItem(
     val id: String,
     val title: String,
     val options: List<ToolOption>,
-    /** Short guidance shown under the title. */
+    /** Breve indicazione mostrata sotto il titolo. */
     val hint: String? = null,
-    /** Id of the primary item this one replaces (mutually exclusive alternatives, e.g. wheelchair vs walking). */
+    /** Definizione estesa di ciò che si osserva; consultabile nella scheda e nel modulo. */
+    val description: String? = null,
+    /** Id dell'item principale che questo sostituisce (alternative mutuamente esclusive). */
     val alternativeOf: String? = null,
+    /** Se valorizzato, per l'item viene raccolta una nota libera con questa etichetta. */
+    val noteLabel: String? = null,
 ) {
     val maxScore: Int get() = options.maxOf { it.score }
+}
+
+/** Campo di testo raccolto prima degli item (es. compito osservato, diagnosi). */
+data class ToolField(
+    val id: String,
+    val label: String,
+    val placeholder: String? = null,
+    val multiline: Boolean = false,
+    /** Etichetta compatta per il PDF (es. "Compito" invece di "Compito osservato"). */
+    val shortLabel: String? = null,
+) {
+    val pdfLabel: String get() = shortLabel ?: label
 }
 
 data class ScoreBand(
@@ -28,14 +45,24 @@ data class ScoreBand(
     val max: Int,
     val label: String,
     val description: String,
-    /** ARGB colour used for chips, bars and the PDF. */
+    /** Colore ARGB usato per chip, barre e PDF. */
     val color: Long,
 ) {
     fun contains(score: Int): Boolean = score in min..max
     val rangeLabel: String get() = if (min == max) "$min" else "$min–$max"
 }
 
-/** The option actually selected for a primary item, possibly through its alternative item. */
+/** Tutte le risposte di una valutazione. */
+data class AssessmentAnswers(
+    /** itemId -> indice dell'opzione selezionata. */
+    val items: Map<String, Int> = emptyMap(),
+    /** itemId -> nota libera. */
+    val itemNotes: Map<String, String> = emptyMap(),
+    /** fieldId -> valore del campo di testo. */
+    val fields: Map<String, String> = emptyMap(),
+)
+
+/** L'opzione effettivamente selezionata per un item principale, eventualmente tramite l'alternativa. */
 data class Selection(
     val item: ToolItem,
     val optionIndex: Int,
@@ -58,7 +85,7 @@ data class ToolDefinition(
     val id: String,
     val name: String,
     val shortName: String,
-    /** Short citation shown next to the tool name, e.g. "Shah, Vanclay e Cooper, 1989". */
+    /** Citazione breve mostrata accanto al nome, es. "Shah, Vanclay e Cooper, 1989". */
     val citation: String,
     val subtitle: String,
     val domain: String,
@@ -69,19 +96,38 @@ data class ToolDefinition(
     val items: List<ToolItem>,
     val bands: List<ScoreBand>,
     val version: String = "1.0",
+    /** Campi di testo aggiuntivi raccolti nella sezione dati della valutazione. */
+    val fields: List<ToolField> = emptyList(),
+    /** Se valorizzato, il punteggio principale è quello di questo item e non la somma degli item. */
+    val headlineItemId: String? = null,
+    val totalLabel: String = "Punteggio totale",
+    val itemNounSingular: String = "attività",
+    val itemNounPlural: String = "attività",
+    val itemsSectionTitle: String = "Attività valutate",
+    val notesLabel: String = "Osservazioni",
+    val notesHint: String? = null,
+    /** Campo il cui valore riassume la valutazione negli elenchi (es. il compito osservato). */
+    val summaryFieldId: String? = null,
 ) {
-    /** Items that count towards the total (alternatives are reached through their primary item). */
+    /** Item che concorrono al punteggio (le alternative si raggiungono dal loro item principale). */
     val primaryItems: List<ToolItem> = items.filter { it.alternativeOf == null }
 
-    val maxScore: Int = primaryItems.sumOf { it.maxScore }
+    /** True quando il punteggio principale è la somma degli item. */
+    val sumsItems: Boolean get() = headlineItemId == null
+
+    val maxScore: Int = headlineItemId
+        ?.let { id -> items.firstOrNull { it.id == id }?.maxScore }
+        ?: primaryItems.sumOf { it.maxScore }
 
     fun item(id: String): ToolItem? = items.firstOrNull { it.id == id }
+
+    fun field(id: String): ToolField? = fields.firstOrNull { it.id == id }
 
     fun alternativeFor(primaryId: String): ToolItem? = items.firstOrNull { it.alternativeOf == primaryId }
 
     fun bandFor(total: Int): ScoreBand? = bands.firstOrNull { it.contains(total) }
 
-    /** Resolves the selection for a primary item: its own answer first, then its alternative's. */
+    /** Risolve la selezione di un item principale: prima la sua risposta, poi quella dell'alternativa. */
     fun selectionFor(primary: ToolItem, answers: Map<String, Int>): Selection? {
         answers[primary.id]?.let { index ->
             primary.options.getOrNull(index)?.let { return Selection(primary, index, it, isAlternative = false) }
@@ -92,14 +138,17 @@ data class ToolDefinition(
         return Selection(alternative, index, option, isAlternative = true)
     }
 
-    fun selections(answers: Map<String, Int>): List<Pair<ToolItem, Selection?>> =
-        primaryItems.map { it to selectionFor(it, answers) }
+    fun selectionFor(primary: ToolItem, answers: AssessmentAnswers): Selection? = selectionFor(primary, answers.items)
 
-    /** answers: itemId -> option index. */
+    /** answers: itemId -> indice opzione. */
     fun score(answers: Map<String, Int>): ScoreResult {
         val selected = primaryItems.mapNotNull { selectionFor(it, answers) }
-        val total = selected.sumOf { it.option.score }
         val complete = selected.size == primaryItems.size
+        val total = if (headlineItemId != null) {
+            item(headlineItemId)?.let { headline -> selectionFor(headline, answers)?.option?.score } ?: 0
+        } else {
+            selected.sumOf { it.option.score }
+        }
         return ScoreResult(
             total = total,
             max = maxScore,
@@ -108,4 +157,10 @@ data class ToolDefinition(
             band = if (complete) bandFor(total) else null,
         )
     }
+
+    fun score(answers: AssessmentAnswers): ScoreResult = score(answers.items)
+
+    /** Testo che riassume la valutazione negli elenchi, se lo strumento lo prevede. */
+    fun summaryOf(answers: AssessmentAnswers): String? =
+        summaryFieldId?.let { id -> answers.fields[id]?.trim()?.takeIf { it.isNotEmpty() } }
 }

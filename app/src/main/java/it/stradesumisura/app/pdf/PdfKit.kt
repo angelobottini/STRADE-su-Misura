@@ -1,5 +1,6 @@
 package it.stradesumisura.app.pdf
 
+import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
@@ -39,12 +40,42 @@ object PdfPalette {
     val white: Int = Color.WHITE
 }
 
+/**
+ * Caratteri dei report. Vengono usati i file Roboto statici (TrueType) inclusi negli asset:
+ * con i font variabili di sistema PdfDocument incorpora glifi Type3 con avanzamenti arrotondati,
+ * e il testo risulta con spaziatura irregolare. Chiamare [load] prima di creare i Paint.
+ */
 object PdfFonts {
-    val regular: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)
-    val medium: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
-    val bold: Typeface = Typeface.create("sans-serif", Typeface.BOLD)
-    val black: Typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
-    val italic: Typeface = Typeface.create("sans-serif", Typeface.ITALIC)
+    @Volatile
+    private var loaded = false
+
+    var regular: Typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+        private set
+    var medium: Typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
+        private set
+    var bold: Typeface = Typeface.create("sans-serif", Typeface.BOLD)
+        private set
+    var black: Typeface = Typeface.create("sans-serif-black", Typeface.NORMAL)
+        private set
+    var italic: Typeface = Typeface.create("sans-serif", Typeface.ITALIC)
+        private set
+    var light: Typeface = Typeface.create("sans-serif-light", Typeface.NORMAL)
+        private set
+
+    @Synchronized
+    fun load(context: Context) {
+        if (loaded) return
+        val assets = context.applicationContext.assets
+        fun asset(name: String, fallback: Typeface): Typeface =
+            runCatching { Typeface.createFromAsset(assets, "fonts/$name") }.getOrDefault(fallback)
+        regular = asset("Roboto-Regular.ttf", regular)
+        medium = asset("Roboto-Medium.ttf", medium)
+        bold = asset("Roboto-Bold.ttf", bold)
+        black = bold
+        italic = asset("Roboto-Italic.ttf", italic)
+        light = asset("Roboto-Light.ttf", light)
+        loaded = true
+    }
 }
 
 fun textPaint(

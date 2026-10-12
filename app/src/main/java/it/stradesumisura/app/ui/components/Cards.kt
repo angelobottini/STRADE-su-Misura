@@ -30,8 +30,13 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import it.stradesumisura.app.data.db.AssessmentEntity
 import it.stradesumisura.app.data.db.PersonEntity
+import it.stradesumisura.app.domain.AnswersCodec
 import it.stradesumisura.app.domain.ToolDefinition
 import it.stradesumisura.app.util.Dates
+
+/** Testo riassuntivo di una valutazione negli elenchi (es. il compito osservato), se previsto. */
+fun assessmentSummary(tool: ToolDefinition?, assessment: AssessmentEntity): String? =
+    tool?.summaryOf(AnswersCodec.decode(assessment.answersJson))
 
 @Composable
 fun InfoPill(text: String, modifier: Modifier = Modifier) {

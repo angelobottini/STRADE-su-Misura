@@ -2,15 +2,14 @@ package it.stradesumisura.app.pdf
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.pdf.PdfDocument
-import android.text.Layout
 import it.stradesumisura.app.data.EvaluatorProfile
 import it.stradesumisura.app.data.db.AssessmentEntity
 import it.stradesumisura.app.data.db.PersonEntity
 import it.stradesumisura.app.domain.AnswersCodec
+import it.stradesumisura.app.domain.AssessmentAnswers
 import it.stradesumisura.app.domain.ScoreBand
 import it.stradesumisura.app.domain.ScoreResult
 import it.stradesumisura.app.domain.Selection
@@ -22,9 +21,9 @@ import java.io.FileOutputStream
 import kotlin.math.max
 
 /**
- * Builds the professional A4 report of an assessment: branded header, person and evaluation
- * cards, score panel with interpretation bar, item table, notes, interpretation legend,
- * signature block and numbered footer.
+ * Costruisce il report A4 di una valutazione: intestazione con il marchio, schede persona e
+ * valutazione, pannello del punteggio con barra interpretativa, tabella degli item, osservazioni,
+ * legenda, riferimento bibliografico, spazio per la firma e piè di pagina numerato.
  */
 class AssessmentPdfExporter(private val context: Context) {
 
@@ -42,6 +41,7 @@ class AssessmentPdfExporter(private val context: Context) {
     }
 
     fun export(input: Input): File {
+        PdfFonts.load(context)
         val document = PdfDocument()
         val generatedAt = Dates.formatTimestamp(System.currentTimeMillis())
         val answers = AnswersCodec.decode(input.assessment.answersJson)
@@ -67,7 +67,7 @@ class AssessmentPdfExporter(private val context: Context) {
     }
 
     // -----------------------------------------------------------------------
-    // Header / footer (drawn on every page)
+    // Intestazione e piè di pagina (su ogni pagina)
     // -----------------------------------------------------------------------
 
     private fun drawHeader(canvas: Canvas, input: Input) {
@@ -79,7 +79,7 @@ class AssessmentPdfExporter(private val context: Context) {
         canvas.drawText("REPORT DI VALUTAZIONE", right, top + 10f, kicker)
 
         val profile = input.profile
-        val line1 = profile.organization.ifBlank { profile.name }.ifBlank { "" }
+        val line1 = profile.organization.ifBlank { profile.name }
         val line2 = if (profile.organization.isNotBlank()) {
             listOf(profile.name, profile.qualification).filter { it.isNotBlank() }.joinToString(" · ")
         } else {
@@ -118,7 +118,7 @@ class AssessmentPdfExporter(private val context: Context) {
         )
     }
 
-    /** The STRADE mark: diagonal mauve band behind a black band with the spaced wordmark. */
+    /** Il marchio STRADE: banda diagonale malva dietro la banda nera con la scritta spaziata. */
     private fun drawBrandMark(canvas: Canvas, x: Float, y: Float, height: Float) {
         val band = height * 0.46f
         val bandTop = y + height * 0.27f
@@ -143,10 +143,10 @@ class AssessmentPdfExporter(private val context: Context) {
     }
 
     // -----------------------------------------------------------------------
-    // Flow content
+    // Contenuto
     // -----------------------------------------------------------------------
 
-    private fun buildBlocks(input: Input, answers: Map<String, Int>, score: ScoreResult): List<PdfBlock> {
+    private fun buildBlocks(input: Input, answers: AssessmentAnswers, score: ScoreResult): List<PdfBlock> {
         val tool = input.tool
         val blocks = mutableListOf<PdfBlock>()
 
@@ -158,23 +158,28 @@ class AssessmentPdfExporter(private val context: Context) {
             paddingBottom = 14f,
             keepWithNext = true,
         )
-        blocks += infoCardsBlock(input)
+        blocks += infoCardsBlock(input, answers)
         blocks += SpacerBlock(14f)
         blocks += scoreBlock(score, tool, input.assessment)
         blocks += SpacerBlock(16f)
 
-        blocks += sectionTitle("Dettaglio delle attività")
-        val header = tableHeaderBlock()
+        blocks += sectionTitle(tool.itemsSectionTitle)
+        val header = tableHeaderBlock(tool)
         blocks += header
         tool.primaryItems.forEachIndexed { index, item ->
-            blocks += rowBlock(index + 1, item, tool.selectionFor(item, answers), index % 2 == 1, header, tool)
+            val selection = tool.selectionFor(item, answers)
+            val noteKey = selection?.item?.id ?: item.id
+            val note = answers.itemNotes[noteKey] ?: answers.itemNotes[item.id]
+            blocks += rowBlock(index + 1, item, selection, note, index % 2 == 1, header)
         }
-        blocks += totalRowBlock(score, header)
+        if (tool.sumsItems) {
+            blocks += totalRowBlock(score, tool, header)
+        }
         blocks += SpacerBlock(16f)
 
         val notes = input.assessment.notes?.trim().orEmpty()
         if (notes.isNotEmpty()) {
-            blocks += sectionTitle("Osservazioni")
+            blocks += sectionTitle(tool.notesLabel)
             blocks += notesBlock(notes)
             blocks += SpacerBlock(16f)
         }
@@ -204,7 +209,7 @@ class AssessmentPdfExporter(private val context: Context) {
 
     private data class InfoRow(val label: String, val value: String)
 
-    private fun infoCardsBlock(input: Input): PdfBlock {
+    private fun infoCardsBlock(input: Input, answers: AssessmentAnswers): PdfBlock {
         val person = input.person
         val assessment = input.assessment
         val birth = Dates.parse(person.birthDate)
@@ -224,12 +229,15 @@ class AssessmentPdfExporter(private val context: Context) {
         )
         val evaluator = listOf(assessment.evaluator, input.profile.qualification.takeIf { !assessment.evaluator.isNullOrBlank() })
             .filter { !it.isNullOrBlank() }.joinToString(" · ")
-        val evaluationRows = listOf(
-            InfoRow("Data", Dates.formatLong(evaluationDate)),
-            InfoRow("Valutatore", evaluator.ifBlank { "—" }),
-            InfoRow("Contesto", assessment.setting?.takeIf { it.isNotBlank() } ?: "—"),
-            InfoRow("Strumento", "${input.tool.name} (${input.tool.citation})"),
-        )
+        val evaluationRows = buildList {
+            add(InfoRow("Data", Dates.formatLong(evaluationDate)))
+            add(InfoRow("Valutatore", evaluator.ifBlank { "—" }))
+            add(InfoRow("Contesto", assessment.setting?.takeIf { it.isNotBlank() } ?: "—"))
+            input.tool.fields.forEach { field ->
+                add(InfoRow(field.pdfLabel, answers.fields[field.id]?.takeIf { it.isNotBlank() } ?: "—"))
+            }
+            add(InfoRow("Strumento", "${input.tool.name} (${input.tool.citation})"))
+        }
 
         val gap = 12f
         val labelPaint = textPaint(7.5f, PdfPalette.muted, PdfFonts.medium)
@@ -245,7 +253,7 @@ class AssessmentPdfExporter(private val context: Context) {
 
         fun cardHeight(width: Float): Float {
             val cardWidth = (width - gap) / 2f
-            return padding + 10f + 8f + max(rowsHeight(personRows, cardWidth), rowsHeight(evaluationRows, cardWidth)) + padding - 5f
+            return padding + 18f + max(rowsHeight(personRows, cardWidth), rowsHeight(evaluationRows, cardWidth)) + padding - 5f
         }
 
         fun drawCard(canvas: Canvas, x: Float, y: Float, w: Float, h: Float, caption: String, rows: List<InfoRow>) {
@@ -277,7 +285,7 @@ class AssessmentPdfExporter(private val context: Context) {
             val leftWidth = width * 0.44f
 
             canvas.drawText(
-                "PUNTEGGIO TOTALE",
+                tool.totalLabel.uppercase(),
                 x + padding, y + padding + 6f,
                 textPaint(7.5f, PdfPalette.mauveDeep, PdfFonts.bold, letterSpacing = 0.12f),
             )
@@ -291,17 +299,18 @@ class AssessmentPdfExporter(private val context: Context) {
             val labelPaint = textPaint(11f, band?.color?.toInt() ?: PdfPalette.graphite, PdfFonts.bold)
             val label = when {
                 band != null -> band.label
-                !score.isComplete -> "Valutazione incompleta (${score.answered}/${score.required} attività)"
+                !score.isComplete -> "Valutazione incompleta (${score.answered}/${score.required} ${tool.itemNounPlural})"
                 else -> "—"
             }
             canvas.drawText(label, x + padding, baseline + 17f, labelPaint)
-            val description = band?.description ?: if (!score.isComplete) "Il punteggio è parziale: completare tutte le attività per ottenere l'interpretazione." else ""
+            val description = band?.description
+                ?: if (!score.isComplete) "Il punteggio è parziale: completare tutti gli ${tool.itemNounPlural} per ottenere l'interpretazione." else ""
             if (description.isNotBlank()) {
                 val layout = layoutText(description, textPaint(7.8f, PdfPalette.graphite), leftWidth - padding, lineSpacing = 1.15f)
                 canvas.drawLayout(layout, x + padding, baseline + 23f)
             }
 
-            // Interpretation bar on the right
+            // Barra interpretativa a destra
             val barLeft = x + leftWidth + padding
             val barRight = x + width - padding
             val barTop = y + padding + 30f
@@ -329,7 +338,7 @@ class AssessmentPdfExporter(private val context: Context) {
                 canvas.drawText(b.rangeLabel, (range.first + range.second) / 2f, barTop + barHeight + 10f, rangePaint)
             }
 
-            // Marker
+            // Indicatore del punteggio
             val current = if (score.isComplete) band else tool.bandFor(score.total)
             if (current != null) {
                 val segment = segments.first { it.first == current }
@@ -361,13 +370,13 @@ class AssessmentPdfExporter(private val context: Context) {
     private val colActivity = 0.30f
     private val colLevel = 0.56f
 
-    private fun tableHeaderBlock(): PdfBlock {
+    private fun tableHeaderBlock(tool: ToolDefinition): PdfBlock {
         val height = 20f
         val paint = textPaint(7.5f, PdfPalette.mauveDeep, PdfFonts.bold, letterSpacing = 0.1f)
         return DrawBlock(heightOf = { height }, keepWithNext = true) { canvas, x, y, width, h ->
             canvas.drawRoundRect(x, y, x + width, y + h, 4f, fillPaint(PdfPalette.mauveSoft))
             val baseline = centredBaseline(paint, y, y + h)
-            canvas.drawText("ATTIVITÀ", x + 8f, baseline, paint)
+            canvas.drawText(tool.itemNounSingular.uppercase(), x + 8f, baseline, paint)
             canvas.drawText("LIVELLO RILEVATO", x + width * colActivity + 8f, baseline, paint)
             canvas.drawText("PUNTI", x + width - 8f, baseline, textPaint(7.5f, PdfPalette.mauveDeep, PdfFonts.bold, letterSpacing = 0.1f, align = Paint.Align.RIGHT))
         }
@@ -377,26 +386,26 @@ class AssessmentPdfExporter(private val context: Context) {
         number: Int,
         item: ToolItem,
         selection: Selection?,
+        note: String?,
         zebra: Boolean,
         header: PdfBlock,
-        tool: ToolDefinition,
     ): PdfBlock {
         val padding = 7f
         val titlePaint = textPaint(9f, PdfPalette.ink, PdfFonts.bold)
         val subPaint = textPaint(7.3f, PdfPalette.muted)
         val levelPaint = textPaint(8.8f, PdfPalette.ink, PdfFonts.medium)
+        val missingPaint = textPaint(8.8f, PdfPalette.muted, PdfFonts.italic)
         val descPaint = textPaint(7.6f, PdfPalette.graphite)
+        val notePaint = textPaint(7.6f, PdfPalette.ink, PdfFonts.italic)
         val scorePaint = textPaint(9.5f, PdfPalette.ink, PdfFonts.bold, align = Paint.Align.RIGHT)
         val maxPaint = textPaint(7f, PdfPalette.muted, align = Paint.Align.RIGHT)
 
         val shownItem = selection?.item ?: item
         val title = "$number. ${shownItem.title}"
-        val subtitle = when {
-            selection?.isAlternative == true -> "in alternativa a «${item.title}»"
-            else -> null
-        }
+        val subtitle = if (selection?.isAlternative == true) "in alternativa a «${item.title}»" else null
         val levelTitle = selection?.option?.title ?: "Non valutato"
-        val description = selection?.option?.description ?: "Nessun livello selezionato per questa attività."
+        val description = selection?.option?.description ?: "Nessun livello selezionato."
+        val noteText = note?.trim()?.takeIf { it.isNotEmpty() }?.let { "Osservazioni: $it" }
         val maxScore = shownItem.maxScore
 
         fun heights(width: Float): Triple<Float, Float, Float> {
@@ -405,7 +414,8 @@ class AssessmentPdfExporter(private val context: Context) {
             val leftH = layoutText(title, titlePaint, leftW, lineSpacing = 1.15f).height +
                 (subtitle?.let { layoutText(it, subPaint, leftW, lineSpacing = 1.15f).height + 2 } ?: 0)
             val midH = layoutText(levelTitle, levelPaint, midW, lineSpacing = 1.15f).height + 2 +
-                layoutText(description, descPaint, midW, lineSpacing = 1.18f).height
+                layoutText(description, descPaint, midW, lineSpacing = 1.18f).height +
+                (noteText?.let { layoutText(it, notePaint, midW, lineSpacing = 1.18f).height + 4 } ?: 0)
             val h = max(max(leftH, midH).toFloat(), 22f) + padding * 2
             return Triple(h, leftW, midW)
         }
@@ -415,34 +425,44 @@ class AssessmentPdfExporter(private val context: Context) {
             if (zebra) canvas.drawRect(x, y, x + width, y + h, fillPaint(PdfPalette.zebra))
             canvas.drawLine(x, y + h, x + width, y + h, strokePaint(PdfPalette.rule, 0.5f))
 
-            var cursor = y + padding
+            val top = y + padding
             val titleLayout = layoutText(title, titlePaint, leftW, lineSpacing = 1.15f)
-            canvas.drawLayout(titleLayout, x + 8f, cursor)
+            canvas.drawLayout(titleLayout, x + 8f, top)
             if (subtitle != null) {
-                canvas.drawLayout(layoutText(subtitle, subPaint, leftW, lineSpacing = 1.15f), x + 8f, cursor + titleLayout.height + 2f)
+                canvas.drawLayout(layoutText(subtitle, subPaint, leftW, lineSpacing = 1.15f), x + 8f, top + titleLayout.height + 2f)
             }
 
             val midX = x + width * colActivity + 8f
-            val levelLayout = layoutText(levelTitle, if (selection == null) textPaint(8.8f, PdfPalette.muted, PdfFonts.italic) else levelPaint, midW, lineSpacing = 1.15f)
-            canvas.drawLayout(levelLayout, midX, cursor)
-            canvas.drawLayout(layoutText(description, descPaint, midW, lineSpacing = 1.18f), midX, cursor + levelLayout.height + 2f)
+            val levelLayout = layoutText(levelTitle, if (selection == null) missingPaint else levelPaint, midW, lineSpacing = 1.15f)
+            canvas.drawLayout(levelLayout, midX, top)
+            val descLayout = layoutText(description, descPaint, midW, lineSpacing = 1.18f)
+            canvas.drawLayout(descLayout, midX, top + levelLayout.height + 2f)
+            if (noteText != null) {
+                canvas.drawLayout(
+                    layoutText(noteText, notePaint, midW, lineSpacing = 1.18f),
+                    midX, top + levelLayout.height + 2f + descLayout.height + 4f,
+                )
+            }
 
             val right = x + width - 8f
             val scoreText = selection?.option?.score?.toString() ?: "—"
-            canvas.drawText(scoreText, right, cursor + 9f, scorePaint)
-            canvas.drawText("su $maxScore", right, cursor + 19f, maxPaint)
-            cursor += h
+            canvas.drawText(scoreText, right, top + 9f, scorePaint)
+            canvas.drawText("su $maxScore", right, top + 19f, maxPaint)
         }
     }
 
-    private fun totalRowBlock(score: ScoreResult, header: PdfBlock): PdfBlock {
+    private fun totalRowBlock(score: ScoreResult, tool: ToolDefinition, header: PdfBlock): PdfBlock {
         val height = 26f
         return DrawBlock(heightOf = { height }, continuationHeader = header) { canvas, x, y, width, h ->
             canvas.drawLine(x, y + 0.5f, x + width, y + 0.5f, strokePaint(PdfPalette.ink, 1f))
             val label = textPaint(9.5f, PdfPalette.ink, PdfFonts.bold)
             val baseline = centredBaseline(label, y, y + h)
             canvas.drawText("Totale", x + 8f, baseline, label)
-            val status = if (score.isComplete) "valutazione completa" else "valutazione parziale: ${score.answered} attività su ${score.required}"
+            val status = if (score.isComplete) {
+                "valutazione completa"
+            } else {
+                "valutazione parziale: ${score.answered} ${tool.itemNounPlural} su ${score.required}"
+            }
             canvas.drawText(status, x + width * colActivity + 8f, baseline, textPaint(8f, PdfPalette.graphite))
             canvas.drawText("${score.total} / ${score.max}", x + width - 8f, baseline, textPaint(11f, PdfPalette.ink, PdfFonts.black, align = Paint.Align.RIGHT))
         }
@@ -487,8 +507,10 @@ class AssessmentPdfExporter(private val context: Context) {
         val labelPaint = textPaint(7.5f, PdfPalette.muted, PdfFonts.medium)
         val valuePaint = textPaint(9f, PdfPalette.ink)
         val place = listOf(profile.place.takeIf { it.isNotBlank() }, Dates.formatIsoLong(input.assessment.date)).filterNotNull().joinToString(", ")
-        val signer = listOf(input.assessment.evaluator?.takeIf { it.isNotBlank() } ?: profile.name.takeIf { it.isNotBlank() }, profile.qualification.takeIf { it.isNotBlank() })
-            .filterNotNull().joinToString(" · ")
+        val signer = listOf(
+            input.assessment.evaluator?.takeIf { it.isNotBlank() } ?: profile.name.takeIf { it.isNotBlank() },
+            profile.qualification.takeIf { it.isNotBlank() },
+        ).filterNotNull().joinToString(" · ")
         return DrawBlock(heightOf = { height }) { canvas, x, y, width, _ ->
             val gap = 24f
             val colWidth = (width - gap) / 2f

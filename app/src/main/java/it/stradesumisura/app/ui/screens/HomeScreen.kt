@@ -33,6 +33,8 @@ import it.stradesumisura.app.R
 import it.stradesumisura.app.domain.ToolRegistry
 import it.stradesumisura.app.ui.components.AssessmentListItem
 import it.stradesumisura.app.ui.components.EmptyState
+import it.stradesumisura.app.ui.components.assessmentSummary
+import it.stradesumisura.app.util.Dates
 import it.stradesumisura.app.ui.components.SectionHeader
 import it.stradesumisura.app.ui.components.StatCard
 import it.stradesumisura.app.ui.components.StradeMark
@@ -123,10 +125,16 @@ fun HomeScreen(
                 }
             } else {
                 items(state.recent, key = { it.assessment.id }) { item ->
+                    val tool = ToolRegistry.byId(item.assessment.toolId)
                     AssessmentListItem(
                         assessment = item.assessment,
                         title = item.person.fullName,
-                        tool = ToolRegistry.byId(item.assessment.toolId),
+                        tool = tool,
+                        subtitle = listOfNotNull(
+                            tool?.name ?: item.assessment.toolId,
+                            assessmentSummary(tool, item.assessment),
+                            Dates.formatIsoShort(item.assessment.date),
+                        ).joinToString(" · "),
                         onClick = { onOpenAssessment(item.assessment.id) },
                     )
                 }

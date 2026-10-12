@@ -35,9 +35,11 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -50,6 +52,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import it.stradesumisura.app.domain.ScoreResult
 import it.stradesumisura.app.domain.Selection
+import it.stradesumisura.app.domain.ToolDefinition
 import it.stradesumisura.app.domain.ToolItem
 import it.stradesumisura.app.domain.ToolOption
 import it.stradesumisura.app.ui.components.BandChip
@@ -93,6 +96,7 @@ fun AssessmentFormScreen(
         bottomBar = {
             if (tool != null && person != null) {
                 SaveBar(
+                    tool = tool,
                     score = score,
                     isEdit = state.isEdit,
                     saving = state.saving,
@@ -155,6 +159,23 @@ fun AssessmentFormScreen(
                                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                                 modifier = Modifier.fillMaxWidth(),
                             )
+                            tool.fields.forEach { field ->
+                                val hint = field.placeholder
+                                OutlinedTextField(
+                                    value = state.answers.fields[field.id] ?: "",
+                                    onValueChange = { viewModel.setField(field.id, it) },
+                                    label = { Text(field.label) },
+                                    placeholder = if (hint != null) {
+                                        { Text(hint) }
+                                    } else {
+                                        null
+                                    },
+                                    singleLine = !field.multiline,
+                                    minLines = if (field.multiline) 3 else 1,
+                                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
                         }
                     }
                 }
@@ -169,16 +190,18 @@ fun AssessmentFormScreen(
                         shown = shown,
                         selection = tool.selectionFor(item, state.answers),
                         useAlternative = useAlternative,
+                        note = state.answers.itemNotes[shown.id],
                         onSelect = viewModel::select,
                         onToggleAlternative = { viewModel.setUseAlternative(item.id, it) },
+                        onNoteChange = { viewModel.setItemNote(shown.id, it) },
                     )
                 }
                 item {
                     OutlinedTextField(
                         value = state.notes,
                         onValueChange = viewModel::setNotes,
-                        label = { Text("Osservazioni") },
-                        placeholder = { Text("Note cliniche, ausili utilizzati, condizioni della valutazione…") },
+                        label = { Text(tool.notesLabel) },
+                        placeholder = { Text(tool.notesHint ?: "Note cliniche, ausili utilizzati, condizioni della valutazione…") },
                         minLines = 4,
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                         modifier = Modifier.fillMaxWidth(),
@@ -232,7 +255,7 @@ private fun ProgressCard(score: ScoreResult?) {
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text(
-                        "ATTIVITÀ VALUTATE",
+                        "COMPLETAMENTO",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
                     )
@@ -257,7 +280,7 @@ private fun ProgressCard(score: ScoreResult?) {
                 BandChip(band)
             } else {
                 Text(
-                    "Completa tutte le attività per ottenere l'interpretazione del punteggio.",
+                    "Completa tutte le voci per ottenere l'interpretazione del punteggio.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
@@ -274,9 +297,12 @@ private fun ItemCard(
     shown: ToolItem,
     selection: Selection?,
     useAlternative: Boolean,
+    note: String?,
     onSelect: (itemId: String, optionIndex: Int) -> Unit,
     onToggleAlternative: (Boolean) -> Unit,
+    onNoteChange: (String) -> Unit,
 ) {
+    var showDefinition by rememberSaveable(shown.id) { mutableStateOf(false) }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -319,6 +345,29 @@ private fun ItemCard(
                     )
                 }
             }
+            val definition = shown.description
+            if (definition != null) {
+                TextButton(
+                    onClick = { showDefinition = !showDefinition },
+                    contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp),
+                ) {
+                    Text(if (showDefinition) "Nascondi definizione" else "Mostra definizione")
+                }
+                if (showDefinition) {
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            definition,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(12.dp),
+                        )
+                    }
+                }
+            }
             if (alternative != null) {
                 Spacer(Modifier.height(12.dp))
                 SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
@@ -340,6 +389,18 @@ private fun ItemCard(
                     val selected = selection != null && selection.item.id == shown.id && selection.optionIndex == index
                     OptionRow(option = option, selected = selected, onClick = { onSelect(shown.id, index) })
                 }
+            }
+            val noteLabel = shown.noteLabel
+            if (noteLabel != null) {
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = note ?: "",
+                    onValueChange = onNoteChange,
+                    label = { Text(noteLabel) },
+                    minLines = 2,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
@@ -393,7 +454,7 @@ private fun OptionRow(option: ToolOption, selected: Boolean, onClick: () -> Unit
 }
 
 @Composable
-private fun SaveBar(score: ScoreResult?, isEdit: Boolean, saving: Boolean, onSave: () -> Unit) {
+private fun SaveBar(tool: ToolDefinition, score: ScoreResult?, isEdit: Boolean, saving: Boolean, onSave: () -> Unit) {
     Surface(color = MaterialTheme.colorScheme.surface, shadowElevation = 8.dp) {
         Column(
             Modifier
@@ -402,9 +463,10 @@ private fun SaveBar(score: ScoreResult?, isEdit: Boolean, saving: Boolean, onSav
         ) {
             if (score != null && !score.isComplete) {
                 val missing = score.required - score.answered
+                val noun = if (missing == 1) tool.itemNounSingular else tool.itemNounPlural
+                val verb = if (missing == 1) "Manca" else "Mancano"
                 Text(
-                    if (missing == 1) "Manca 1 attività: la valutazione verrà salvata come parziale."
-                    else "Mancano $missing attività: la valutazione verrà salvata come parziale.",
+                    "$verb $missing $noun: la valutazione verrà salvata come parziale.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

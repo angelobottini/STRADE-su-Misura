@@ -10,9 +10,13 @@ diagonale color malva `#C7ADBF`), tipografia geometrica e un'interfaccia pulita 
 
 - **Archivio persone** – anagrafica essenziale (nome, data di nascita, sesso, codice, note) con
   ricerca; ogni persona raccoglie le proprie valutazioni.
-- **Strumenti di valutazione** – catalogo estensibile. Primo strumento disponibile:
-  **Indice di Barthel Modificato** (Shah, Vanclay e Cooper, 1989), 10 attività di base della vita
-  quotidiana con cinque livelli ponderati, punteggio 0–100 e fasce interpretative.
+- **Strumenti di valutazione** – catalogo estensibile:
+  - **Indice di Barthel Modificato** (Shah, Vanclay e Cooper, 1989): 10 attività di base della vita
+    quotidiana con cinque livelli ponderati, punteggio 0–100 e fasce interpretative.
+  - **Osservazione ADL** (linee guida olandesi per l'aprassia, Hogeschool van Amsterdam e NVE 2003;
+    versione italiana Università di Verona 2012): osservazione di un compito con punteggio di
+    indipendenza 0–3 e valutazione delle fasi di orientamento, esecuzione e controllo, ciascuna
+    con le proprie osservazioni.
 - **Compilazione guidata** – livelli descritti per esteso, punteggio e completamento aggiornati in
   tempo reale, gestione dell'alternativa deambulazione/carrozzina, data, valutatore, contesto e
   osservazioni. Le valutazioni incomplete si salvano come parziali.
@@ -31,7 +35,7 @@ diagonale color malva `#C7ADBF`), tipografia geometrica e un'interfaccia pulita 
 | Interfaccia | Jetpack Compose + Material 3, tema chiaro/scuro |
 | Persistenza | Room (SQLite) |
 | Navigazione | Navigation Compose |
-| PDF | `android.graphics.pdf.PdfDocument` con motore di impaginazione interno (`pdf/PdfKit.kt`) |
+| PDF | `android.graphics.pdf.PdfDocument` con motore di impaginazione interno (`pdf/PdfKit.kt`); testo in Roboto statico incluso negli asset (Apache 2.0), per evitare i glifi Type3 generati dai font variabili di sistema |
 | Build | Gradle 8.13, Android Gradle Plugin 8.11, JDK 17, `minSdk 26`, `targetSdk 35` |
 
 Struttura principale del codice (`app/src/main/java/it/stradesumisura/app`):

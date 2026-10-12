@@ -157,6 +157,12 @@ fun SettingsScreen(
                             "generati localmente e condivisi solo quando lo decidi tu.",
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        "Carattere tipografico dei report: Roboto © Google, Apache License 2.0.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             Spacer(Modifier.height(16.dp))

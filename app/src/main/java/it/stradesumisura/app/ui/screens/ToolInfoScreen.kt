@@ -88,8 +88,8 @@ fun ToolInfoScreen(
                         Spacer(Modifier.height(12.dp))
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             InfoPill(tool.duration)
-                            InfoPill("${tool.primaryItems.size} attività")
-                            InfoPill("Punteggio 0–${tool.maxScore}")
+                            InfoPill("${tool.primaryItems.size} ${tool.itemNounPlural}")
+                            InfoPill("${tool.totalLabel} 0–${tool.maxScore}")
                         }
                     }
                 }
@@ -113,8 +113,19 @@ fun ToolInfoScreen(
                         }
                     }
                 }
+                if (tool.fields.isNotEmpty()) {
+                    item {
+                        InfoSection("Dati raccolti") {
+                            Text(
+                                "Oltre a data, valutatore e contesto, la scheda registra: " +
+                                    tool.fields.joinToString(", ") { it.label.lowercase() } + ".",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                }
                 item {
-                    InfoSection("Attività valutate") {
+                    InfoSection(tool.itemsSectionTitle) {
                         tool.primaryItems.forEachIndexed { index, item ->
                             Row(
                                 Modifier
@@ -131,6 +142,14 @@ fun ToolInfoScreen(
                                     "0–${item.maxScore}",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            item.description?.let { description ->
+                                Text(
+                                    description,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(start = 20.dp, bottom = 6.dp),
                                 )
                             }
                             tool.alternativeFor(item.id)?.let { alternative ->
