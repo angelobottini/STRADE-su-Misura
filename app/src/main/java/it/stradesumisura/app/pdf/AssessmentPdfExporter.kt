@@ -14,6 +14,7 @@ import it.stradesumisura.app.domain.ScoreBand
 import it.stradesumisura.app.domain.ScoreResult
 import it.stradesumisura.app.domain.Selection
 import it.stradesumisura.app.domain.ToolDefinition
+import it.stradesumisura.app.domain.ToolGroup
 import it.stradesumisura.app.domain.ToolItem
 import it.stradesumisura.app.util.Dates
 import java.io.File
@@ -224,17 +225,25 @@ class AssessmentPdfExporter(private val context: Context) {
         val header = tableHeaderBlock(tool)
         blocks += header
         tool.primaryItems.forEachIndexed { index, item ->
+            val group = tool.groupOf(item)
+            if (group != null && tool.itemsOf(group).firstOrNull()?.id == item.id) {
+                blocks += groupHeaderRowBlock(group, header)
+            }
             val selection = tool.selectionFor(item, answers)
             val noteKey = selection?.item?.id ?: item.id
             val note = answers.itemNotes[noteKey] ?: answers.itemNotes[item.id]
             val failed = tool.failedSubtasks(item, answers)
+            val decision = selection?.item?.let { tool.decisionSummary(it, answers) }
             if (item.isComputed) {
                 val explanation = tool.computedExplanation(item, answers)
                 blocks += rowBlock("", item, selection, note, explanation, failed, zebra = false, header = header, emphasised = true, d = d)
             } else {
                 val number = tool.numberOf(item)?.let { "$it." } ?: ""
                 val highlighted = item.id in tool.highlightedItemIds
-                blocks += rowBlock(number, item, selection, note, null, failed, index % 2 == 1, header, emphasised = highlighted, d = d)
+                blocks += rowBlock(number, item, selection, note, null, failed, index % 2 == 1, header, emphasised = highlighted, d = d, decision = decision)
+            }
+            if (group != null && tool.itemsOf(group).lastOrNull()?.id == item.id) {
+                blocks += subtotalRowBlock(group, tool.groupScore(group, answers), tool, header)
             }
         }
         if (tool.sumsItems) {
@@ -372,21 +381,33 @@ class AssessmentPdfExporter(private val context: Context) {
         } else {
             ""
         }
+        val groupSummary = tool.groups.joinToString("; ") { group ->
+            val gs = tool.groupScore(group, answers)
+            "${group.title.lowercase()} ${if (gs.answered == 0) "—" else gs.total} su ${gs.max}"
+        }
         val label = when {
             band != null -> band.label
             !score.isComplete -> "Valutazione incompleta (${score.answered}/${score.required} ${tool.itemNounPlural})"
-            !tool.hasBands -> "${score.percent}% di risposte corrette"
+            tool.countsAnswers -> "${score.percent}% di risposte corrette"
+            !tool.hasBands -> "Valutazione completa"
             else -> "—"
         }
         val description = when {
             band != null -> if (d.showBandDescription) band.description else ""
             !score.isComplete && tool.hasBands -> "Punteggio parziale: completare tutti i ${tool.itemNounPlural} per ottenere l'interpretazione."
-            !score.isComplete -> "Punteggio parziale: finora ${score.percent}% di risposte corrette.$skippedText".trim()
-            !tool.hasBands -> "${score.total} risposte corrette su ${score.max}.$skippedText".trim()
+            !score.isComplete && tool.countsAnswers -> "Punteggio parziale: finora ${score.percent}% di risposte corrette.$skippedText".trim()
+            !score.isComplete -> "Punteggio parziale: il totale ha senso solo con tutte le ${tool.itemNounPlural} compilate." +
+                (if (groupSummary.isNotEmpty()) " Finora: $groupSummary." else "")
+            tool.countsAnswers -> "${score.total} risposte corrette su ${score.max}.$skippedText".trim()
+            !tool.hasBands -> "Somma dei livelli delle ${score.required} ${tool.itemNounPlural} (intervallo ${tool.scoreRangeLabel})." +
+                (if (groupSummary.isNotEmpty()) " ${groupSummary.replaceFirstChar(Char::uppercase)}." else "")
             else -> ""
         }
         if (!tool.hasBands) labelPaint.color = PdfPalette.ink
-        val highlights = highlightsOf(tool, answers)
+        val highlights = highlightsOf(tool, answers) + tool.groups.map { group ->
+            val gs = tool.groupScore(group, answers)
+            Highlight(group.compactTitle, if (gs.answered == 0) "—" else "${gs.total}", gs.max)
+        }
         val headline = tool.headlineItem
         val explanation = if (headline != null && headline.isComputed) tool.computedExplanation(headline, answers) else null
         val showsComputed = headline != null && headline.isComputed
@@ -445,16 +466,19 @@ class AssessmentPdfExporter(private val context: Context) {
                 val filled = barLeft + (barRight - barLeft) * score.fraction.coerceIn(0f, 1f)
                 if (filled > barLeft) canvas.drawRoundRect(barLeft, barTop, filled, barTop + barHeight, 5f, fillPaint(PdfPalette.mauveDeep))
                 val edgePaint = textPaint(6.5f, PdfPalette.muted)
-                canvas.drawText("0", barLeft, barTop + barHeight + 9f, edgePaint)
+                canvas.drawText("${score.min}", barLeft, barTop + barHeight + 9f, edgePaint)
                 canvas.drawText("${score.max}", barRight, barTop + barHeight + 9f, textPaint(6.5f, PdfPalette.muted, align = Paint.Align.RIGHT))
                 canvas.drawText(
-                    "${score.percent}%", (barLeft + barRight) / 2f, barTop + barHeight + 9f,
+                    if (tool.countsAnswers) "${score.percent}%" else totalText, (barLeft + barRight) / 2f, barTop + barHeight + 9f,
                     textPaint(6.5f, PdfPalette.ink, PdfFonts.bold, align = Paint.Align.CENTER),
                 )
                 canvas.drawTextFitted(
-                    "Risposte corrette (${tool.shortName}, su ${score.max})",
+                    if (tool.countsAnswers) "Risposte corrette (${tool.shortName}, su ${score.max})" else "${tool.totalLabel} (${tool.scoreRangeLabel})",
                     barLeft, y + padding + 6f, barRight - barLeft, kickerPaint,
                 )
+                if (highlights.isNotEmpty()) {
+                    drawHighlightPills(canvas, barLeft, y + pillTopOffset, barRight - barLeft, pillHeight, highlights)
+                }
                 return@DrawBlock
             }
             val bands = tool.bands
@@ -572,6 +596,7 @@ class AssessmentPdfExporter(private val context: Context) {
         header: PdfBlock,
         emphasised: Boolean,
         d: Density,
+        decision: String? = null,
     ): PdfBlock {
         val padding = d.rowPadding
         val computed = item.isComputed
@@ -608,6 +633,7 @@ class AssessmentPdfExporter(private val context: Context) {
             }
         val noteText = note?.trim()?.takeIf { it.isNotEmpty() }?.let { "${shownItem.noteLabel ?: "Osservazioni"}: $it" }
         val calcText = explanation?.let { "Calcolo: ${it.replaceFirstChar(Char::uppercase)}" }
+            ?: decision
         val failedText = failedSubtasks.takeIf { it.isNotEmpty() }?.let { "Non riuscite: ${it.joinToString("; ")}" }
         val maxScore = shownItem.maxScore
 
@@ -691,6 +717,37 @@ class AssessmentPdfExporter(private val context: Context) {
         }
     }
 
+    /** Riga che apre un'area dello strumento (es. «Area motoria») nella tabella delle voci. */
+    private fun groupHeaderRowBlock(group: ToolGroup, header: PdfBlock): PdfBlock {
+        val height = 18f
+        val paint = textPaint(7.5f, PdfPalette.mauveDeep, PdfFonts.bold, letterSpacing = 0.1f)
+        val subPaint = textPaint(7f, PdfPalette.muted, PdfFonts.italic)
+        return DrawBlock(heightOf = { height }, keepWithNext = true, continuationHeader = header) { canvas, x, y, width, h ->
+            canvas.drawRect(x, y, x + width, y + h, fillPaint(PdfPalette.zebra))
+            val baseline = centredBaseline(paint, y, y + h)
+            canvas.drawText(group.title.uppercase(), x + 8f, baseline, paint)
+            group.subtitle?.let { subtitle ->
+                val titleWidth = paint.measureText(group.title.uppercase())
+                canvas.drawTextFitted(subtitle, x + 8f + titleWidth + 10f, baseline, width - 16f - titleWidth - 10f, subPaint)
+            }
+        }
+    }
+
+    /** Riga con il subtotale di un'area, sotto le sue voci. */
+    private fun subtotalRowBlock(group: ToolGroup, score: ScoreResult, tool: ToolDefinition, header: PdfBlock): PdfBlock {
+        val height = 20f
+        return DrawBlock(heightOf = { height }, continuationHeader = header) { canvas, x, y, width, h ->
+            canvas.drawLine(x, y + 0.5f, x + width, y + 0.5f, strokePaint(PdfPalette.graphite, 0.6f))
+            val label = textPaint(8.5f, PdfPalette.ink, PdfFonts.bold)
+            val baseline = centredBaseline(label, y, y + h)
+            canvas.drawText("Subtotale ${group.title.lowercase()}", x + 8f, baseline, label)
+            val status = if (score.isComplete) "" else "parziale: ${score.answered} ${tool.itemNounPlural} su ${score.required}"
+            canvas.drawTextFitted(status, x + width * colActivity + 8f, baseline, width * (1f - colActivity) - 70f, textPaint(7.5f, PdfPalette.graphite))
+            val total = if (score.answered == 0) "—" else "${score.total}"
+            canvas.drawText("$total / ${score.max}", x + width - 8f, baseline, textPaint(9.5f, PdfPalette.ink, PdfFonts.bold, align = Paint.Align.RIGHT))
+        }
+    }
+
     private fun totalRowBlock(score: ScoreResult, tool: ToolDefinition, header: PdfBlock): PdfBlock {
         val height = 26f
         return DrawBlock(heightOf = { height }, continuationHeader = header) { canvas, x, y, width, h ->
@@ -700,7 +757,7 @@ class AssessmentPdfExporter(private val context: Context) {
             canvas.drawText("Totale", x + 8f, baseline, label)
             val skipped = if (score.skipped > 0) " · ${score.skipped} facoltative non somministrate" else ""
             val status = if (score.isComplete) {
-                (if (tool.hasBands) "valutazione completa" else "valutazione completa · ${score.percent}% di risposte corrette") + skipped
+                (if (tool.countsAnswers) "valutazione completa · ${score.percent}% di risposte corrette" else "valutazione completa") + skipped
             } else {
                 "valutazione parziale: ${score.answered} ${tool.itemNounPlural} su ${score.required}$skipped"
             }

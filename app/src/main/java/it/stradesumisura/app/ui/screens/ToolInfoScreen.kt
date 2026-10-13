@@ -136,10 +136,36 @@ fun ToolInfoScreen(
                         }
                     }
                 }
+                if (tool.hasDecisionTrees) {
+                    item {
+                        InfoSection("Albero decisionale") {
+                            Text(
+                                "Per ogni ${tool.itemNounSingular} è disponibile l'albero decisionale del manuale: nel modulo di " +
+                                    "compilazione il pulsante «Guida con l'albero decisionale» pone le domande una alla volta " +
+                                    "(Sì/No, oppure il numero di episodi) e seleziona il livello raggiunto, che resta " +
+                                    "modificabile. La scheda e il report indicano quando il livello è stato scelto con la guida.",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                }
                 item {
                     InfoSection(tool.itemsSectionTitle) {
                         tool.primaryItems.forEach { item ->
                             val number = tool.numberOf(item)?.let { "$it. " } ?: ""
+                            val group = tool.groupOf(item)
+                            if (group != null && tool.itemsOf(group).firstOrNull()?.id == item.id) {
+                                Column(Modifier.padding(top = if (item.id == tool.primaryItems.first().id) 0.dp else 10.dp, bottom = 4.dp)) {
+                                    Text(
+                                        "${group.title} (${tool.itemsOf(group).size} ${tool.itemNounPlural})",
+                                        style = MaterialTheme.typography.titleSmall,
+                                        color = MaterialTheme.colorScheme.secondary,
+                                    )
+                                    group.subtitle?.let {
+                                        Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
                             Row(
                                 Modifier
                                     .fillMaxWidth()
@@ -182,11 +208,30 @@ fun ToolInfoScreen(
                 }
                 item {
                     InfoSection("Interpretazione del punteggio") {
-                        if (!tool.hasBands) {
+                        if (!tool.hasBands && tool.countsAnswers) {
                             Text(
                                 "Lo strumento non prevede fasce interpretative: il punteggio è il numero di risposte " +
                                     "corrette per ogni prova e in totale (fino a ${tool.maxScore}), letto anche in percentuale. " +
                                     "Le prove facoltative non somministrate non entrano nel totale né nel massimo.",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        } else if (!tool.hasBands) {
+                            Text(
+                                buildString {
+                                    append("Lo strumento non prevede fasce interpretative: il punteggio totale è la somma dei livelli ")
+                                    append("delle ${tool.answerableItems.size} ${tool.itemNounPlural} (da ${tool.minScore} a ${tool.maxScore}); ")
+                                    append("più alto è il punteggio, maggiore è l'indipendenza.")
+                                    if (tool.hasGroups) {
+                                        append(" Subtotali: ")
+                                        append(
+                                            tool.groups.joinToString("; ") { group ->
+                                                val items = tool.itemsOf(group)
+                                                "${group.title.lowercase()} ${items.sumOf { it.minScore }}–${items.sumOf { it.maxScore }}"
+                                            },
+                                        )
+                                        append(".")
+                                    }
+                                },
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                         }

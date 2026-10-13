@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
@@ -67,6 +66,8 @@ import it.stradesumisura.app.domain.ToolItem
 import it.stradesumisura.app.ui.components.BandChip
 import it.stradesumisura.app.ui.components.ConfirmDialog
 import it.stradesumisura.app.ui.components.EmptyState
+import it.stradesumisura.app.ui.components.GroupHeaderRow
+import it.stradesumisura.app.ui.components.GroupSubtotals
 import it.stradesumisura.app.ui.components.LabeledValue
 import it.stradesumisura.app.ui.components.ScoreHighlights
 import it.stradesumisura.app.ui.components.SectionHeader
@@ -200,18 +201,25 @@ fun AssessmentDetailScreen(
                     }
                 }
                 item { SectionHeader(tool.itemsSectionTitle) }
-                itemsIndexed(tool.primaryItems, key = { _, item -> item.id }) { _, item ->
-                    val selection = tool.selectionFor(item, state.answers)
-                    val noteKey = selection?.item?.id ?: item.id
-                    DetailRow(
-                        number = tool.numberOf(item) ?: "=",
-                        item = item,
-                        selection = selection,
-                        note = state.answers.itemNotes[noteKey] ?: state.answers.itemNotes[item.id],
-                        highlighted = item.id in tool.highlightedItemIds,
-                        explanation = if (item.isComputed) tool.computedExplanation(item, state.answers) else null,
-                        failedSubtasks = tool.failedSubtasks(item, state.answers),
-                    )
+                tool.primaryItems.forEach { toolItem ->
+                    val group = tool.groupOf(toolItem)
+                    if (group != null && tool.itemsOf(group).firstOrNull()?.id == toolItem.id) {
+                        item(key = "group_${group.id}") { GroupHeaderRow(tool = tool, group = group, answers = state.answers) }
+                    }
+                    item(key = toolItem.id) {
+                        val selection = tool.selectionFor(toolItem, state.answers)
+                        val noteKey = selection?.item?.id ?: toolItem.id
+                        DetailRow(
+                            number = tool.numberOf(toolItem) ?: "=",
+                            item = toolItem,
+                            selection = selection,
+                            note = state.answers.itemNotes[noteKey] ?: state.answers.itemNotes[toolItem.id],
+                            highlighted = toolItem.id in tool.highlightedItemIds,
+                            explanation = if (toolItem.isComputed) tool.computedExplanation(toolItem, state.answers) else null,
+                            failedSubtasks = tool.failedSubtasks(toolItem, state.answers),
+                            decisionSummary = selection?.item?.let { tool.decisionSummary(it, state.answers) },
+                        )
+                    }
                 }
                 val notes = data.assessment.notes
                 if (!notes.isNullOrBlank()) {
@@ -278,17 +286,29 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult, answers: Ass
                     Spacer(Modifier.height(10.dp))
                     Text(band.description, style = MaterialTheme.typography.bodyMedium)
                 }
-                !tool.hasBands && score.isComplete -> Text(
+                !tool.hasBands && score.isComplete && tool.countsAnswers -> Text(
                     "${score.percent}% di risposte corrette (${score.total} su ${score.max}).$skippedText",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                !tool.hasBands && score.isComplete -> Text(
+                    "Somma dei livelli delle ${score.required} ${tool.itemNounPlural} (intervallo ${tool.scoreRangeLabel}).",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 else -> Text(
                     "Valutazione parziale: ${score.answered} ${tool.itemNounPlural} su ${score.required}. " +
-                        (if (tool.hasBands) "Completa la valutazione per ottenere l'interpretazione." else "Finora ${score.percent}% di risposte corrette.") +
+                        when {
+                            tool.hasBands -> "Completa la valutazione per ottenere l'interpretazione."
+                            tool.countsAnswers -> "Finora ${score.percent}% di risposte corrette."
+                            else -> "Il punteggio totale ha senso solo con tutte le ${tool.itemNounPlural} compilate."
+                        } +
                         skippedText,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
+            }
+            if (tool.hasGroups) {
+                Spacer(Modifier.height(16.dp))
+                GroupSubtotals(tool = tool, answers = answers)
             }
             if (tool.highlightedItems.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
@@ -318,8 +338,12 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult, answers: Ass
                 )
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Text("${score.percent}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${score.min}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        if (tool.countsAnswers) "${score.percent}%" else "${score.total}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     Text("${score.max}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -385,6 +409,7 @@ private fun DetailRow(
     highlighted: Boolean = false,
     explanation: String? = null,
     failedSubtasks: List<String> = emptyList(),
+    decisionSummary: String? = null,
 ) {
     val shown = selection?.item ?: item
     val borderColor = when {
@@ -451,6 +476,14 @@ private fun DetailRow(
                     Spacer(Modifier.height(2.dp))
                     Text(
                         "Calcolo: ${explanation.replaceFirstChar(Char::uppercase)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
+                if (decisionSummary != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        decisionSummary,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.secondary,
                     )

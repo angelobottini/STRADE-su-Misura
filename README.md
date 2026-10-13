@@ -29,6 +29,15 @@ diagonale color malva `#C7ADBF`), tipografia geometrica e un'interfaccia pulita 
     sotto-prove si segnano una per una come riuscite o non riuscite durante la somministrazione,
     con un campo «Commenti» per prova. Senza fasce interpretative: il totale si legge anche in
     percentuale e le prove facoltative non somministrate non entrano nel massimo.
+  - **FIM – Misura dell'indipendenza funzionale** (Granger e coll., 1987; versione italiana
+    SO.GE.COM.): diciotto voci, tredici motorie (A–M) e cinque cognitive (N–R), su sette livelli
+    da 1 (assistenza totale) a 7 (autosufficienza completa); totale 18–126 con i subtotali
+    dell'area motoria (13–91) e cognitiva (5–35). Per ogni voce è trascritto l'albero decisionale
+    del manuale: il pulsante «Guida con l'albero decisionale» pone le domande una alla volta
+    (Sì/No, oppure il numero di episodi di incontinenza) e seleziona il livello raggiunto, che
+    resta modificabile. Vescica e Alvo percorrono due alberi (livello di assistenza e frequenza
+    degli episodi) e registrano il più basso; la scheda e il report indicano quando il livello è
+    stato scelto con la guida. Campi per la modalità di locomozione, comprensione ed espressione.
 - **Compilazione guidata** – livelli descritti per esteso, punteggio e completamento aggiornati in
   tempo reale, gestione dell'alternativa deambulazione/carrozzina, data, valutatore, contesto e
   osservazioni. Le valutazioni incomplete si salvano come parziali.
@@ -57,7 +66,7 @@ Struttura principale del codice (`app/src/main/java/it/stradesumisura/app`):
 ```
 data/        entità Room, DAO, repository, impostazioni
 domain/      modello generico degli strumenti (ToolDefinition) e registro degli strumenti
-domain/tools/ definizione delle singole scale (BarthelModifiedIndex.kt, AdlObservation.kt, PerformanceQualityRatingScale.kt, FunctionalMonetarySkills.kt)
+domain/tools/ definizione delle singole scale (BarthelModifiedIndex.kt, AdlObservation.kt, PerformanceQualityRatingScale.kt, FunctionalMonetarySkills.kt, FunctionalIndependenceMeasure.kt)
 pdf/         impaginazione e generazione dei report
 ui/          tema, componenti, schermate, ViewModel e navigazione
 ```
@@ -104,7 +113,10 @@ git). Senza chiave, la build di release viene firmata con la chiave di debug.
    conteggio si creano con `ToolItem.count(...)` (numero di risposte corrette, con eventuali
    `subtasks` da spuntare una per una); `optional = true` esclude dal massimo le prove non
    somministrate e `number` fissa l'etichetta (es. "7a"). Uno strumento senza `bands` mostra il
-   punteggio in percentuale.
+   punteggio in percentuale se tutti gli item sono a conteggio, altrimenti come somma dei livelli.
+   Un item può dichiarare `decisionTree` (`DecisionNode.yesNo`, `choice`, `level`, `LowerOf`):
+   il modulo propone allora la guida con le domande e salva il percorso scelto. `groups` divide
+   gli item in aree con subtotale (es. motoria e cognitiva nella FIM).
 2. Registrarlo in `ToolRegistry.tools`.
 
 Compilazione, salvataggio, punteggio, schermate e PDF funzionano automaticamente per ogni

@@ -1,5 +1,6 @@
 package it.stradesumisura.app.domain
 
+import org.json.JSONArray
 import org.json.JSONObject
 
 /**
@@ -13,6 +14,7 @@ object AnswersCodec {
     private const val KEY_ITEM_NOTES = "itemNotes"
     private const val KEY_FIELDS = "fields"
     private const val KEY_SUBTASKS = "subtasks"
+    private const val KEY_PATHS = "paths"
 
     fun encode(answers: AssessmentAnswers): String {
         val json = JSONObject()
@@ -26,6 +28,11 @@ object AnswersCodec {
             }
         }
         if (subtasks.length() > 0) json.put(KEY_SUBTASKS, subtasks)
+        val paths = JSONObject()
+        answers.decisionPaths.toSortedMap().forEach { (itemId, path) ->
+            if (path.isNotEmpty()) paths.put(itemId, JSONArray(path))
+        }
+        if (paths.length() > 0) json.put(KEY_PATHS, paths)
         return json.toString()
     }
 
@@ -39,6 +46,7 @@ object AnswersCodec {
                     itemNotes = stringMap(json.optJSONObject(KEY_ITEM_NOTES)),
                     fields = stringMap(json.optJSONObject(KEY_FIELDS)),
                     subtaskResults = subtaskMap(json.optJSONObject(KEY_SUBTASKS)),
+                    decisionPaths = pathMap(json.optJSONObject(KEY_PATHS)),
                 )
             } else {
                 AssessmentAnswers(items = intMap(json))
@@ -75,6 +83,19 @@ object AnswersCodec {
                     }
                 }
                 if (results.isNotEmpty()) put(itemId, results)
+            }
+        }
+    }
+
+    private fun pathMap(obj: JSONObject?): Map<String, List<Int>> {
+        if (obj == null) return emptyMap()
+        return buildMap {
+            val keys = obj.keys()
+            while (keys.hasNext()) {
+                val itemId = keys.next()
+                val array = obj.optJSONArray(itemId) ?: continue
+                val path = (0 until array.length()).map { array.optInt(it, -1) }
+                if (path.isNotEmpty() && path.none { it < 0 }) put(itemId, path)
             }
         }
     }

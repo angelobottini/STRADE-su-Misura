@@ -21,6 +21,7 @@ import it.stradesumisura.app.domain.AssessmentAnswers
 import it.stradesumisura.app.domain.ScoreResult
 import it.stradesumisura.app.domain.ToolDefinition
 import it.stradesumisura.app.domain.ToolRegistry
+import it.stradesumisura.app.domain.resolve
 import it.stradesumisura.app.pdf.AssessmentPdfExporter
 import it.stradesumisura.app.pdf.PdfFiles
 import it.stradesumisura.app.util.Dates
@@ -347,27 +348,46 @@ class AssessmentFormViewModel(container: AppContainer, handle: SavedStateHandle)
             answers = current.answers.copy(
                 items = current.answers.items - itemId,
                 subtaskResults = current.answers.subtaskResults - itemId,
+                decisionPaths = current.answers.decisionPaths - itemId,
             ),
             dirty = true,
         )
     }
 
-    fun select(itemId: String, optionIndex: Int) {
+    fun select(itemId: String, optionIndex: Int) = selectOption(itemId, optionIndex, decisionPath = null)
+
+    /**
+     * Applica il livello raggiunto con l'albero decisionale di un item: seleziona l'opzione con quel
+     * punteggio e conserva le risposte date, così la scheda e il report possono indicarle.
+     */
+    fun applyDecision(itemId: String, path: List<Int>) {
+        val item = _state.value.tool?.item(itemId) ?: return
+        val outcome = item.decisionTree?.resolve(path) ?: return
+        val optionIndex = item.optionIndexFor(outcome.score) ?: return
+        selectOption(itemId, optionIndex, decisionPath = path)
+    }
+
+    private fun selectOption(itemId: String, optionIndex: Int, decisionPath: List<Int>?) {
         val tool = _state.value.tool ?: return
         val item = tool.item(itemId) ?: return
         _state.update { current ->
             val items = current.answers.items.toMutableMap()
             val modes = current.alternativeModes.toMutableMap()
+            // Una scelta manuale del livello annulla il percorso dell'albero decisionale.
+            val paths = current.answers.decisionPaths.toMutableMap()
+            if (decisionPath == null) paths.remove(itemId) else paths[itemId] = decisionPath
             items[itemId] = optionIndex
             item.alternativeOf?.let { primaryId ->
                 items.remove(primaryId)
+                paths.remove(primaryId)
                 modes[primaryId] = true
             }
             tool.alternativeFor(itemId)?.let { alternative ->
                 items.remove(alternative.id)
+                paths.remove(alternative.id)
                 modes[itemId] = false
             }
-            current.copy(answers = current.answers.copy(items = items), alternativeModes = modes, dirty = true)
+            current.copy(answers = current.answers.copy(items = items, decisionPaths = paths), alternativeModes = modes, dirty = true)
         }
     }
 

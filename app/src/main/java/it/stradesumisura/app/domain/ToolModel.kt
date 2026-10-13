@@ -26,6 +26,78 @@ sealed interface ComputedScore {
     data class FloorMeanOf(override val itemIds: List<String>) : ComputedScore
 }
 
+/**
+ * Albero decisionale che guida il valutatore al livello di un item con una sequenza di domande
+ * (es. gli alberi decisionali della FIM). Ogni risposta porta a un'altra domanda o a un risultato.
+ */
+sealed interface DecisionNode {
+    /** Domanda con le risposte possibili (di solito «Sì» e «No»). */
+    data class Question(val text: String, val answers: List<DecisionAnswer>) : DecisionNode
+
+    /** Livello raggiunto; [label] è il nome del livello nell'albero, se diverso da quello dell'opzione. */
+    data class Result(val score: Int, val label: String? = null) : DecisionNode
+
+    /**
+     * Più alberi da percorrere in sequenza: il livello dell'item è il più basso tra i risultati
+     * (es. Vescica e Alvo della FIM: livello di assistenza e frequenza degli episodi di incontinenza).
+     */
+    data class LowerOf(val parts: List<DecisionPart>) : DecisionNode
+
+    companion object {
+        fun level(score: Int, label: String? = null): DecisionNode = Result(score, label)
+
+        /** Domanda a cui si risponde «Sì» o «No». */
+        fun yesNo(text: String, yes: DecisionNode, no: DecisionNode): DecisionNode =
+            Question(text, listOf(DecisionAnswer("Sì", yes), DecisionAnswer("No", no)))
+
+        /** Domanda con più risposte possibili. */
+        fun choice(text: String, vararg answers: Pair<String, DecisionNode>): DecisionNode =
+            Question(text, answers.map { DecisionAnswer(it.first, it.second) })
+    }
+}
+
+data class DecisionAnswer(val label: String, val next: DecisionNode)
+
+/** Una parte di un albero composto ([DecisionNode.LowerOf]), con il proprio titolo. */
+data class DecisionPart(val title: String, val root: DecisionNode)
+
+/** Esito di un percorso nell'albero decisionale di un item. */
+data class DecisionOutcome(
+    /** Livello finale. */
+    val score: Int,
+    /** Nome del livello, se l'albero ne dichiara uno. */
+    val label: String?,
+    /** Per gli alberi composti, il livello raggiunto in ciascuna parte (titolo -> livello). */
+    val partScores: List<Pair<String, Int>>,
+)
+
+/**
+ * Percorre l'albero con le risposte date (indici delle risposte, nell'ordine). Restituisce l'esito
+ * se il percorso è completo, altrimenti null.
+ */
+fun DecisionNode.resolve(path: List<Int>): DecisionOutcome? {
+    var cursor = 0
+
+    fun walk(node: DecisionNode): DecisionOutcome? = when (node) {
+        is DecisionNode.Result -> DecisionOutcome(node.score, node.label, emptyList())
+        is DecisionNode.Question -> {
+            val answer = path.getOrNull(cursor)?.let { node.answers.getOrNull(it) } ?: return null
+            cursor++
+            walk(answer.next)
+        }
+        is DecisionNode.LowerOf -> {
+            val outcomes = node.parts.map { part -> part.title to (walk(part.root) ?: return null) }
+            val lowest = outcomes.minBy { it.second.score }
+            DecisionOutcome(
+                score = lowest.second.score,
+                label = lowest.second.label,
+                partScores = outcomes.map { it.first to it.second.score },
+            )
+        }
+    }
+    return walk(this)?.takeIf { cursor == path.size }
+}
+
 data class ToolItem(
     val id: String,
     val title: String,
@@ -61,6 +133,11 @@ data class ToolItem(
     val optional: Boolean = false,
     /** Numero mostrato accanto all'item (es. "7a") al posto della numerazione progressiva. */
     val number: String? = null,
+    /**
+     * Albero decisionale che guida alla scelta del livello (es. FIM): il valutatore risponde alle
+     * domande e il livello raggiunto viene selezionato tra le [options] con lo stesso punteggio.
+     */
+    val decisionTree: DecisionNode? = null,
 ) {
     val compactTitle: String get() = shortTitle ?: title
     val maxScore: Int get() = options.maxOf { it.score }
@@ -68,6 +145,10 @@ data class ToolItem(
     val isComputed: Boolean get() = computed != null
     val isCount: Boolean get() = countMax != null
     val hasSubtasks: Boolean get() = subtasks.isNotEmpty()
+    val hasDecisionTree: Boolean get() = decisionTree != null
+
+    /** Indice dell'opzione con il punteggio indicato, oppure null. */
+    fun optionIndexFor(score: Int): Int? = options.indexOfFirst { it.score == score }.takeIf { it >= 0 }
 
     /** Intervallo dei punteggi dell'item, es. "0–3" oppure "1–10". */
     val scoreRangeLabel: String get() = "$minScore–$maxScore"
@@ -128,6 +209,22 @@ data class ScoreBand(
     val rangeLabel: String get() = if (min == max) "$min" else "$min–$max"
 }
 
+/**
+ * Area di uno strumento (es. area motoria e area cognitiva della FIM): un sottoinsieme di item con
+ * un proprio subtotale, mostrato nei riepiloghi e nel report.
+ */
+data class ToolGroup(
+    val id: String,
+    val title: String,
+    val itemIds: List<String>,
+    /** Titolo breve per chip e riquadri compatti. */
+    val shortTitle: String? = null,
+    /** Riga descrittiva sotto il titolo (es. le sotto-aree comprese). */
+    val subtitle: String? = null,
+) {
+    val compactTitle: String get() = shortTitle ?: title
+}
+
 /** Tutte le risposte di una valutazione. */
 data class AssessmentAnswers(
     /** itemId -> indice dell'opzione selezionata. */
@@ -138,6 +235,8 @@ data class AssessmentAnswers(
     val fields: Map<String, String> = emptyMap(),
     /** itemId -> (indice sotto-prova -> riuscita) per gli item a conteggio con sotto-prove. */
     val subtaskResults: Map<String, Map<Int, Boolean>> = emptyMap(),
+    /** itemId -> risposte date nell'albero decisionale (indici), quando il livello è stato scelto così. */
+    val decisionPaths: Map<String, List<Int>> = emptyMap(),
 )
 
 /** L'opzione effettivamente selezionata (o calcolata) per un item principale. */
@@ -156,9 +255,13 @@ data class ScoreResult(
     val band: ScoreBand?,
     /** Item facoltativi non somministrati (esclusi da [required] e da [max]). */
     val skipped: Int = 0,
+    /** Punteggio più basso ottenibile (0 per i conteggi, 18 per la FIM). */
+    val min: Int = 0,
 ) {
     val isComplete: Boolean get() = answered == required
-    val fraction: Float get() = if (max == 0) 0f else total.toFloat() / max
+
+    /** Posizione del punteggio tra [min] e [max], da 0 a 1. */
+    val fraction: Float get() = if (max <= min) 0f else ((total - min).toFloat() / (max - min)).coerceIn(0f, 1f)
     val percent: Int get() = (fraction * 100f).toInt()
 }
 
@@ -194,12 +297,28 @@ data class ToolDefinition(
      * da cui viene calcolato il punteggio). Vuoto per gli strumenti che non lo prevedono.
      */
     val highlightedItemIds: List<String> = emptyList(),
+    /** Aree con subtotale (es. motoria e cognitiva nella FIM); vuoto per gli strumenti senza aree. */
+    val groups: List<ToolGroup> = emptyList(),
 ) {
     /** Item mostrati nei riepiloghi (le alternative si raggiungono dal loro item principale). */
     val primaryItems: List<ToolItem> = items.filter { it.alternativeOf == null }
 
     /** Item che il valutatore compila (esclusi quelli calcolati automaticamente). */
     val answerableItems: List<ToolItem> = primaryItems.filter { !it.isComputed }
+
+    /** True quando il punteggio è un conteggio di risposte corrette (tutti gli item a conteggio). */
+    val countsAnswers: Boolean = answerableItems.isNotEmpty() && answerableItems.all { it.isCount }
+
+    /** True quando almeno un item prevede l'albero decisionale. */
+    val hasDecisionTrees: Boolean = items.any { it.hasDecisionTree }
+
+    val hasGroups: Boolean get() = groups.isNotEmpty()
+
+    /** Item principali di un'area, nell'ordine dello strumento. */
+    fun itemsOf(group: ToolGroup): List<ToolItem> = primaryItems.filter { it.id in group.itemIds }
+
+    /** Area a cui appartiene un item, se lo strumento prevede aree. */
+    fun groupOf(item: ToolItem): ToolGroup? = groups.firstOrNull { item.id in it.itemIds }
 
     /** True quando il punteggio principale è la somma degli item compilati. */
     val sumsItems: Boolean get() = headlineItemId == null
@@ -303,10 +422,51 @@ data class ToolDefinition(
             required = relevant.size,
             band = if (complete) bandFor(total) else null,
             skipped = answerableItems.size - relevant.size,
+            min = if (headline != null) headline.minScore else relevant.sumOf { it.minScore },
         )
     }
 
     fun score(answers: AssessmentAnswers): ScoreResult = score(answers.items)
+
+    /** Subtotale di un'area: somma dei livelli dei suoi item compilati. */
+    fun groupScore(group: ToolGroup, answers: AssessmentAnswers): ScoreResult {
+        val groupItems = itemsOf(group).filter { !it.isComputed }
+        val relevant = groupItems.filter { !it.optional || selectionFor(it, answers) != null }
+        val selected = relevant.mapNotNull { selectionFor(it, answers) }
+        return ScoreResult(
+            total = selected.sumOf { it.option.score },
+            max = relevant.sumOf { it.maxScore },
+            answered = selected.size,
+            required = relevant.size,
+            band = null,
+            skipped = groupItems.size - relevant.size,
+            min = relevant.sumOf { it.minScore },
+        )
+    }
+
+    /** Esito dell'albero decisionale di un item, se il livello è stato scelto con la guida. */
+    fun decisionOutcome(item: ToolItem, answers: AssessmentAnswers): DecisionOutcome? {
+        val tree = item.decisionTree ?: return null
+        val path = answers.decisionPaths[item.id] ?: return null
+        val outcome = tree.resolve(path) ?: return null
+        // Il percorso vale solo se corrisponde ancora al livello selezionato.
+        val selected = answers.items[item.id]?.let { item.options.getOrNull(it)?.score } ?: return null
+        return outcome.takeIf { it.score == selected }
+    }
+
+    /**
+     * Testo che riassume come è stato scelto il livello con l'albero decisionale, es.
+     * "Livello di assistenza 6 · Frequenza degli episodi 4 → il più basso: 4", oppure null.
+     */
+    fun decisionSummary(item: ToolItem, answers: AssessmentAnswers): String? {
+        val outcome = decisionOutcome(item, answers) ?: return null
+        return if (outcome.partScores.size > 1) {
+            "Albero decisionale: " + outcome.partScores.joinToString(" · ") { (title, score) -> "${title.lowercase()} $score" } +
+                " → il più basso: ${outcome.score}"
+        } else {
+            "Livello scelto con l'albero decisionale" + (outcome.label?.let { ": $it" } ?: "")
+        }
+    }
 
     /** True se lo strumento prevede fasce interpretative; altrimenti il punteggio si legge in percentuale. */
     val hasBands: Boolean get() = bands.isNotEmpty()

@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -67,7 +66,10 @@ import it.stradesumisura.app.domain.ToolOption
 import it.stradesumisura.app.ui.components.BandChip
 import it.stradesumisura.app.ui.components.ConfirmDialog
 import it.stradesumisura.app.ui.components.DateField
+import it.stradesumisura.app.ui.components.DecisionTreeDialog
 import it.stradesumisura.app.ui.components.EmptyState
+import it.stradesumisura.app.ui.components.GroupHeaderRow
+import it.stradesumisura.app.ui.components.GroupSubtotals
 import it.stradesumisura.app.ui.components.ScoreHighlights
 import it.stradesumisura.app.ui.components.StradeTopBar
 import it.stradesumisura.app.ui.viewmodel.AppViewModelFactory
@@ -189,26 +191,35 @@ fun AssessmentFormScreen(
                         }
                     }
                 }
-                itemsIndexed(tool.answerableItems, key = { _, item -> item.id }) { index, item ->
-                    val alternative = tool.alternativeFor(item.id)
-                    val useAlternative = alternative != null && state.usesAlternative(item.id)
-                    val shown = if (useAlternative && alternative != null) alternative else item
-                    ItemCard(
-                        number = tool.numberOf(item) ?: "${index + 1}",
-                        item = item,
-                        alternative = alternative,
-                        shown = shown,
-                        selection = tool.selectionFor(item, state.answers),
-                        useAlternative = useAlternative,
-                        note = state.answers.itemNotes[shown.id],
-                        subtaskResults = state.answers.subtaskResults[shown.id].orEmpty(),
-                        onSelect = viewModel::select,
-                        onToggleAlternative = { viewModel.setUseAlternative(item.id, it) },
-                        onNoteChange = { viewModel.setItemNote(shown.id, it) },
-                        onSetCount = { viewModel.setCount(shown.id, it) },
-                        onSetSubtask = { subtaskIndex, correct -> viewModel.setSubtask(shown.id, subtaskIndex, correct) },
-                        onClear = { viewModel.clearItem(shown.id) },
-                    )
+                tool.answerableItems.forEachIndexed { index, toolItem ->
+                    // Intestazione dell'area (es. motoria/cognitiva) prima del suo primo item.
+                    val group = tool.groupOf(toolItem)
+                    if (group != null && tool.itemsOf(group).firstOrNull()?.id == toolItem.id) {
+                        item(key = "group_${group.id}") { GroupHeaderRow(tool = tool, group = group, answers = state.answers) }
+                    }
+                    item(key = toolItem.id) {
+                        val alternative = tool.alternativeFor(toolItem.id)
+                        val useAlternative = alternative != null && state.usesAlternative(toolItem.id)
+                        val shown = if (useAlternative && alternative != null) alternative else toolItem
+                        ItemCard(
+                            number = tool.numberOf(toolItem) ?: "${index + 1}",
+                            item = toolItem,
+                            alternative = alternative,
+                            shown = shown,
+                            selection = tool.selectionFor(toolItem, state.answers),
+                            useAlternative = useAlternative,
+                            note = state.answers.itemNotes[shown.id],
+                            subtaskResults = state.answers.subtaskResults[shown.id].orEmpty(),
+                            decisionSummary = tool.decisionSummary(shown, state.answers),
+                            onSelect = viewModel::select,
+                            onToggleAlternative = { viewModel.setUseAlternative(toolItem.id, it) },
+                            onNoteChange = { viewModel.setItemNote(shown.id, it) },
+                            onSetCount = { viewModel.setCount(shown.id, it) },
+                            onSetSubtask = { subtaskIndex, correct -> viewModel.setSubtask(shown.id, subtaskIndex, correct) },
+                            onClear = { viewModel.clearItem(shown.id) },
+                            onApplyDecision = { path -> viewModel.applyDecision(shown.id, path) },
+                        )
+                    }
                 }
                 item {
                     OutlinedTextField(
@@ -293,10 +304,19 @@ private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?, answers: Ass
             val band = score?.band
             when {
                 band != null -> BandChip(band)
-                !tool.hasBands && score != null -> Text(
+                !tool.hasBands && score != null && tool.countsAnswers -> Text(
                     buildString {
                         append(if (score.answered == 0) "Nessuna prova valutata." else "${score.percent}% di risposte corrette finora.")
                         if (score.skipped > 0) append(" ${score.skipped} ${if (score.skipped == 1) "prova facoltativa non valutata" else "prove facoltative non valutate"}.")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                !tool.hasBands && score != null -> Text(
+                    if (score.answered == 0) {
+                        "Nessuna ${tool.itemNounSingular} valutata: il punteggio è la somma dei livelli (da ${tool.minScore} a ${tool.maxScore})."
+                    } else {
+                        "Somma dei livelli delle ${tool.itemNounPlural} compilate (intervallo ${tool.scoreRangeLabel})."
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -306,6 +326,10 @@ private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?, answers: Ass
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
+            }
+            if (tool.hasGroups) {
+                Spacer(Modifier.height(12.dp))
+                GroupSubtotals(tool = tool, answers = answers)
             }
             if (tool.highlightedItems.isNotEmpty()) {
                 Spacer(Modifier.height(12.dp))
@@ -340,14 +364,27 @@ private fun ItemCard(
     useAlternative: Boolean,
     note: String?,
     subtaskResults: Map<Int, Boolean>,
+    decisionSummary: String?,
     onSelect: (itemId: String, optionIndex: Int) -> Unit,
     onToggleAlternative: (Boolean) -> Unit,
     onNoteChange: (String) -> Unit,
     onSetCount: (Int?) -> Unit,
     onSetSubtask: (index: Int, correct: Boolean?) -> Unit,
     onClear: () -> Unit,
+    onApplyDecision: (path: List<Int>) -> Unit,
 ) {
     var showDefinition by rememberSaveable(shown.id) { mutableStateOf(false) }
+    var showDecisionTree by rememberSaveable(shown.id) { mutableStateOf(false) }
+    if (showDecisionTree) {
+        DecisionTreeDialog(
+            item = shown,
+            onConfirm = { path ->
+                onApplyDecision(path)
+                showDecisionTree = false
+            },
+            onDismiss = { showDecisionTree = false },
+        )
+    }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -433,6 +470,28 @@ private fun ItemCard(
                         onClick = { onToggleAlternative(true) },
                         shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
                     ) { Text(alternative.title) }
+                }
+            }
+            if (shown.hasDecisionTree) {
+                Spacer(Modifier.height(12.dp))
+                Button(
+                    onClick = { showDecisionTree = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (selection == null) "Guida con l'albero decisionale" else "Ripeti l'albero decisionale") }
+                if (decisionSummary != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        decisionSummary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                } else if (selection != null) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        "Livello scelto direttamente dalle descrizioni.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
             Spacer(Modifier.height(12.dp))
