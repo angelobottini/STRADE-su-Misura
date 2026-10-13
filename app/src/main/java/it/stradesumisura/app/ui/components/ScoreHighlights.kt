@@ -49,11 +49,11 @@ fun ScoreHighlights(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             items.forEach { item ->
-                val value = tool.selectionFor(item, answers)?.option?.score?.toString() ?: "—"
+                val value = tool.selectionFor(item, answers)?.option?.score?.let { tool.formatScore(it) } ?: "—"
                 HighlightChip(
                     label = item.compactTitle,
                     value = value,
-                    max = item.maxScore,
+                    max = tool.formatScore(item.maxScore),
                     emphasised = false,
                     modifier = Modifier.weight(1f),
                 )
@@ -62,8 +62,8 @@ fun ScoreHighlights(
                 Text("=", style = MaterialTheme.typography.titleMedium, color = labelColor)
                 HighlightChip(
                     label = tool.shortName,
-                    value = if (score != null && score.isComplete) "${score.total}" else "—",
-                    max = tool.maxScore,
+                    value = if (score != null && score.isComplete) tool.formatScore(score.total) else "—",
+                    max = tool.formatScore(tool.maxScore),
                     emphasised = true,
                     modifier = Modifier.weight(1f),
                 )
@@ -83,7 +83,7 @@ fun ScoreHighlights(
 }
 
 @Composable
-private fun HighlightChip(label: String, value: String, max: Int, emphasised: Boolean, modifier: Modifier = Modifier) {
+private fun HighlightChip(label: String, value: String, max: String, emphasised: Boolean, modifier: Modifier = Modifier) {
     val container = if (emphasised) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.surface
     val content = if (emphasised) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurface
     val muted = if (emphasised) MaterialTheme.colorScheme.surface.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant

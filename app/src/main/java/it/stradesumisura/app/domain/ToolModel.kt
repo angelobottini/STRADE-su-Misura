@@ -1,6 +1,7 @@
 package it.stradesumisura.app.domain
 
 import kotlin.math.abs
+import kotlin.math.max
 
 /**
  * Modello generico di uno strumento di valutazione (scala o scheda di osservazione).
@@ -13,7 +14,35 @@ data class ToolOption(
     val score: Int,
     val title: String,
     val description: String,
-)
+    /**
+     * Opzione «non applicabile» (es. «la carrozzina non ha braccioli»): se selezionata l'item è
+     * compilato ma non entra nel punteggio né nel massimo.
+     */
+    val notApplicable: Boolean = false,
+    /**
+     * Punteggio per variante (es. carrozzina elettrica nella TAI): valore della variante -> punteggio,
+     * null = non applicabile in quella variante. La variante è il valore del campo
+     * [ToolDefinition.variantFieldId]; [score] vale per le varianti non elencate.
+     */
+    val variantScores: Map<String, Int?> = emptyMap(),
+    /** Immagine che illustra l'opzione (es. le posizioni della mano nella TAI). */
+    val imageRes: Int? = null,
+    /** Gruppo dell'opzione negli item a scelta multipla raggruppata (es. la superficie di arrivo). */
+    val group: String? = null,
+) {
+    /** L'opzione con il punteggio della variante indicata (es. carrozzina elettrica). */
+    fun resolved(variant: String?): ToolOption {
+        if (variant == null || !variantScores.containsKey(variant)) return this
+        val value = variantScores[variant]
+        return if (value == null) copy(score = 0, notApplicable = true) else copy(score = value)
+    }
+
+    /** Punteggio più alto ottenibile con l'opzione in una qualsiasi variante. */
+    val bestScore: Int get() = (listOf(score.takeIf { !notApplicable }) + variantScores.values).filterNotNull().maxOrNull() ?: 0
+
+    /** Punteggio più basso ottenibile con l'opzione in una qualsiasi variante. */
+    val worstScore: Int get() = (listOf(score.takeIf { !notApplicable }) + variantScores.values).filterNotNull().minOrNull() ?: 0
+}
 
 /** Regola di calcolo automatico del punteggio di un item a partire da altri item. */
 sealed interface ComputedScore {
@@ -138,14 +167,46 @@ data class ToolItem(
      * domande e il livello raggiunto viene selezionato tra le [options] con lo stesso punteggio.
      */
     val decisionTree: DecisionNode? = null,
+    /**
+     * Item a scelta multipla («segnare tutte le voci che si applicano»): la risposta è l'insieme
+     * delle opzioni selezionate (salvato come maschera di bit) e il punteggio è la somma dei loro
+     * punteggi, mai sotto zero.
+     */
+    val multiSelect: Boolean = false,
+    /** Per gli item a scelta multipla: il punteggio è la media dei punteggi selezionati (es. A/B nella TAI). */
+    val multiSelectMean: Boolean = false,
+    /** Etichetta del gruppo di opzioni da scegliere prima (es. «Superficie di arrivo»), per le opzioni con [ToolOption.group]. */
+    val optionGroupLabel: String? = null,
+    /** Immagine mostrata sotto il titolo dell'item (es. lo schema degli angoli nella TAI). */
+    val imageRes: Int? = null,
+    /** Titolo di sezione mostrato prima dell'item (es. «Fase I – Preparazione della carrozzina»). */
+    val section: String? = null,
 ) {
     val compactTitle: String get() = shortTitle ?: title
-    val maxScore: Int get() = options.maxOf { it.score }
-    val minScore: Int get() = options.minOf { it.score }
+
+    /** Punteggio massimo dell'item in qualunque variante (per la scelta multipla: somma dei punteggi positivi). */
+    val maxScore: Int
+        get() = when {
+            multiSelect && !multiSelectMean -> options.sumOf { it.bestScore.coerceAtLeast(0) }
+            else -> options.maxOf { it.bestScore }
+        }
+
+    /** Punteggio minimo dell'item (zero per la scelta multipla, che non scende sotto zero). */
+    val minScore: Int get() = if (multiSelect) 0 else options.minOf { it.worstScore }
     val isComputed: Boolean get() = computed != null
     val isCount: Boolean get() = countMax != null
     val hasSubtasks: Boolean get() = subtasks.isNotEmpty()
     val hasDecisionTree: Boolean get() = decisionTree != null
+    val hasOptionGroups: Boolean get() = options.any { it.group != null }
+
+    /** Gruppi delle opzioni nell'ordine di prima comparsa (es. le superfici). */
+    val optionGroups: List<String> get() = options.mapNotNull { it.group }.distinct()
+
+    /** Indici delle opzioni selezionate in un item a scelta multipla, dalla maschera di bit salvata. */
+    fun selectedIndices(mask: Int): List<Int> = options.indices.filter { mask and (1 shl it) != 0 }
+
+    /** Maschera di bit con l'opzione [index] selezionata oppure no. */
+    fun toggled(mask: Int, index: Int): Int = mask xor (1 shl index)
 
     /** Indice dell'opzione con il punteggio indicato, oppure null. */
     fun optionIndexFor(score: Int): Int? = options.indexOfFirst { it.score == score }.takeIf { it >= 0 }
@@ -193,8 +254,11 @@ data class ToolField(
     val multiline: Boolean = false,
     /** Etichetta compatta per il PDF (es. "Compito" invece di "Compito osservato"). */
     val shortLabel: String? = null,
+    /** Se non vuoto, il campo è una scelta tra questi valori (pulsanti) invece di un testo libero. */
+    val choices: List<String> = emptyList(),
 ) {
     val pdfLabel: String get() = shortLabel ?: label
+    val isChoice: Boolean get() = choices.isNotEmpty()
 }
 
 data class ScoreBand(
@@ -221,6 +285,11 @@ data class ToolGroup(
     val shortTitle: String? = null,
     /** Riga descrittiva sotto il titolo (es. le sotto-aree comprese). */
     val subtitle: String? = null,
+    /**
+     * Area facoltativa (es. il secondo trasferimento della TAI): le sue voci sono richieste solo
+     * se almeno una è stata compilata; altrimenti non contano né come mancanti né nel massimo.
+     */
+    val optional: Boolean = false,
 ) {
     val compactTitle: String get() = shortTitle ?: title
 }
@@ -257,12 +326,18 @@ data class ScoreResult(
     val skipped: Int = 0,
     /** Punteggio più basso ottenibile (0 per i conteggi, 18 per la FIM). */
     val min: Int = 0,
+    /** Item compilati come «non applicabile» (esclusi dal massimo). */
+    val notApplicable: Int = 0,
+    /** Frazione calcolata con una regola propria dello strumento (es. media delle percentuali dei trasferimenti nella TAI). */
+    val fractionOverride: Float? = null,
 ) {
     val isComplete: Boolean get() = answered == required
 
     /** Posizione del punteggio tra [min] e [max], da 0 a 1. */
-    val fraction: Float get() = if (max <= min) 0f else ((total - min).toFloat() / (max - min)).coerceIn(0f, 1f)
-    val percent: Int get() = (fraction * 100f).toInt()
+    val fraction: Float
+        get() = fractionOverride?.coerceIn(0f, 1f)
+            ?: if (max <= min) 0f else ((total - min).toFloat() / (max - min)).coerceIn(0f, 1f)
+    val percent: Int get() = (fraction * 100f + 0.5f).toInt()
 }
 
 data class ToolDefinition(
@@ -299,6 +374,23 @@ data class ToolDefinition(
     val highlightedItemIds: List<String> = emptyList(),
     /** Aree con subtotale (es. motoria e cognitiva nella FIM); vuoto per gli strumenti senza aree. */
     val groups: List<ToolGroup> = emptyList(),
+    /**
+     * Divisore dei punteggi: i punteggi sono salvati come interi e mostrati divisi per questo valore
+     * (100 per la TAI, che assegna 0,5 e −0,5 punti). Usare [formatScore] per mostrarli.
+     */
+    val scoreDivisor: Int = 1,
+    /** Campo a scelta il cui valore seleziona i punteggi per variante delle opzioni ([ToolOption.variantScores]). */
+    val variantFieldId: String? = null,
+    /** True quando il punteggio principale si legge come percentuale del massimo applicabile (es. TAI). */
+    val percentHeadline: Boolean = false,
+    /** Se valorizzato, la percentuale complessiva è la media delle percentuali delle aree compilate (es. i due trasferimenti della TAI). */
+    val groupPercentMean: Boolean = false,
+    /** Se valorizzato, il totale non scende sotto questo valore (es. 0 per la TAI). */
+    val totalFloor: Int? = null,
+    /** Testo che spiega il calcolo del punteggio nella scheda dello strumento, se diverso da quello generato. */
+    val scoringNote: String? = null,
+    /** Etichetta del numero di item nelle schede (es. «18 voci per trasferimento»), se diversa dal conteggio. */
+    val itemsCountLabel: String? = null,
 ) {
     /** Item mostrati nei riepiloghi (le alternative si raggiungono dal loro item principale). */
     val primaryItems: List<ToolItem> = items.filter { it.alternativeOf == null }
@@ -308,6 +400,46 @@ data class ToolDefinition(
 
     /** True quando il punteggio è un conteggio di risposte corrette (tutti gli item a conteggio). */
     val countsAnswers: Boolean = answerableItems.isNotEmpty() && answerableItems.all { it.isCount }
+
+    /** True quando il punteggio principale va letto come percentuale (conteggi e strumenti con [percentHeadline]). */
+    val showsPercent: Boolean get() = countsAnswers || percentHeadline
+
+    /** Testo che segue la percentuale, es. «di risposte corrette» oppure «del punteggio massimo applicabile». */
+    val percentNoun: String get() = if (countsAnswers) "di risposte corrette" else "del punteggio massimo applicabile"
+
+    /** Punteggio formattato per la visualizzazione, es. "7" oppure "0,5" quando [scoreDivisor] è 100. */
+    fun formatScore(value: Int): String {
+        if (scoreDivisor == 1) return "$value"
+        val negative = value < 0
+        val abs = kotlin.math.abs(value)
+        val whole = abs / scoreDivisor
+        var rest = abs % scoreDivisor
+        var digits = scoreDivisor.toString().length - 1
+        while (rest > 0 && rest % 10 == 0) {
+            rest /= 10
+            digits--
+        }
+        val text = if (rest == 0) "$whole" else "$whole,${rest.toString().padStart(digits, '0')}"
+        return if (negative) "−$text" else text
+    }
+
+    /** Intervallo formattato, es. "0–19" oppure "0–100%" per gli strumenti letti in percentuale. */
+    fun formatRange(min: Int, max: Int): String = "${formatScore(min)}–${formatScore(max)}"
+
+    /** Intervallo dei punteggi di un item, formattato (es. "0–1" oppure "0–2"). */
+    fun rangeLabelOf(item: ToolItem): String = formatRange(item.minScore, item.maxScore)
+
+    /** Etichetta del numero di item, es. "18 voci" oppure quella dichiarata dallo strumento. */
+    val itemsCountText: String get() = itemsCountLabel ?: "${answerableItems.size} $itemNounPlural"
+
+    /** Valore della variante scelta (es. il tipo di carrozzina), se lo strumento la prevede. */
+    fun variantOf(answers: AssessmentAnswers): String? = variantFieldId?.let { answers.fields[it] }
+
+    /** Le opzioni di un item con i punteggi della variante scelta. */
+    fun optionsFor(item: ToolItem, answers: AssessmentAnswers): List<ToolOption> {
+        val variant = variantOf(answers)
+        return item.options.map { it.resolved(variant) }
+    }
 
     /** True quando almeno un item prevede l'albero decisionale. */
     val hasDecisionTrees: Boolean = items.any { it.hasDecisionTree }
@@ -328,10 +460,12 @@ data class ToolDefinition(
     val maxScore: Int = headlineItem?.maxScore ?: answerableItems.sumOf { it.maxScore }
 
     /** Punteggio più basso ottenibile (0 per la maggior parte delle scale, 1 per la PQRS). */
-    val minScore: Int = headlineItem?.minScore ?: answerableItems.sumOf { it.minScore }
+    val minScore: Int = (headlineItem?.minScore ?: answerableItems.sumOf { it.minScore }).let { min ->
+        totalFloor?.let { floor -> max(min, floor) } ?: min
+    }
 
-    /** Intervallo del punteggio principale, es. "0–100" oppure "1–10". */
-    val scoreRangeLabel: String get() = "$minScore–$maxScore"
+    /** Intervallo del punteggio principale, es. "0–100" oppure "1–10" (in percentuale per gli strumenti letti così). */
+    val scoreRangeLabel: String get() = if (percentHeadline) "0–100%" else formatRange(minScore, maxScore)
 
     /** Item evidenziati accanto al punteggio principale, nell'ordine dichiarato. */
     val highlightedItems: List<ToolItem> = highlightedItemIds.mapNotNull { id -> items.firstOrNull { it.id == id } }
@@ -386,63 +520,128 @@ data class ToolDefinition(
      * Risolve la selezione di un item principale: per gli item calcolati l'opzione con il punteggio
      * derivato; per gli altri la risposta dell'item stesso, poi quella della sua alternativa.
      */
-    fun selectionFor(primary: ToolItem, answers: Map<String, Int>): Selection? {
+    fun selectionFor(primary: ToolItem, answers: Map<String, Int>, variant: String? = null): Selection? {
         if (primary.isComputed) {
             val value = computedValue(primary, answers) ?: return null
             val index = primary.options.indices.minByOrNull { abs(primary.options[it].score - value) } ?: return null
             return Selection(primary, index, primary.options[index], isAlternative = false)
         }
         answers[primary.id]?.let { index ->
-            primary.options.getOrNull(index)?.let { return Selection(primary, index, it, isAlternative = false) }
+            if (primary.multiSelect) {
+                multiSelection(primary, index, variant)?.let { return it }
+            } else {
+                primary.options.getOrNull(index)?.let { return Selection(primary, index, it.resolved(variant), isAlternative = false) }
+            }
         }
         val alternative = alternativeFor(primary.id) ?: return null
         val index = answers[alternative.id] ?: return null
         val option = alternative.options.getOrNull(index) ?: return null
-        return Selection(alternative, index, option, isAlternative = true)
+        return Selection(alternative, index, option.resolved(variant), isAlternative = true)
     }
 
-    fun selectionFor(primary: ToolItem, answers: AssessmentAnswers): Selection? = selectionFor(primary, answers.items)
+    fun selectionFor(primary: ToolItem, answers: AssessmentAnswers): Selection? =
+        selectionFor(primary, answers.items, variantOf(answers))
 
-    /** answers: itemId -> indice opzione. */
-    fun score(answers: Map<String, Int>): ScoreResult {
-        // Gli item facoltativi non compilati non contano né come mancanti né nel massimo.
-        val relevant = answerableItems.filter { !it.optional || selectionFor(it, answers) != null }
-        val selected = relevant.mapNotNull { selectionFor(it, answers) }
-        val complete = selected.size == relevant.size
-        val headline = headlineItem
-        val total = if (headline != null) {
-            selectionFor(headline, answers)?.option?.score ?: 0
-        } else {
-            selected.sumOf { it.option.score }
+    /**
+     * Selezione di un item a scelta multipla: un'opzione «riassunto» con i titoli delle opzioni
+     * selezionate e il punteggio dell'item (somma non negativa oppure media, secondo l'item).
+     * L'item è «non applicabile» quando tutte le opzioni selezionate lo sono.
+     */
+    private fun multiSelection(item: ToolItem, mask: Int, variant: String?): Selection? {
+        val indices = item.selectedIndices(mask)
+        if (indices.isEmpty()) return null
+        val chosen = indices.map { item.options[it].resolved(variant) }
+        val applicable = chosen.filter { !it.notApplicable }
+        val score = when {
+            applicable.isEmpty() -> 0
+            item.multiSelectMean -> Math.round(applicable.sumOf { it.score }.toDouble() / applicable.size).toInt()
+            else -> applicable.sumOf { it.score }.coerceAtLeast(0)
         }
+        val group = chosen.firstOrNull()?.group
+        val title = buildString {
+            if (group != null) append("$group: ")
+            append(chosen.joinToString(" · ") { if (group != null) it.title.replaceFirstChar(Char::lowercase) else it.title })
+        }
+        val description = if (item.multiSelectMean && applicable.size > 1) {
+            "Media di ${applicable.size} posizioni: (${applicable.joinToString(" + ") { formatScore(it.score) }}) ÷ ${applicable.size}"
+        } else {
+            ""
+        }
+        val summary = ToolOption(score, title, description, notApplicable = applicable.isEmpty(), group = group)
+        return Selection(item, mask, summary, isAlternative = false)
+    }
+
+    /** True quando un item di un'area facoltativa va compilato: l'area è stata iniziata. */
+    private fun groupStarted(group: ToolGroup, answers: AssessmentAnswers): Boolean =
+        itemsOf(group).any { !it.isComputed && selectionFor(it, answers) != null }
+
+    /**
+     * Punteggio di un insieme di item: gli item facoltativi (o delle aree facoltative non iniziate)
+     * non compilati non contano né come mancanti né nel massimo; gli item «non applicabili» sono
+     * compilati ma esclusi dal massimo.
+     */
+    private fun scoreOf(candidates: List<ToolItem>, answers: AssessmentAnswers): ScoreResult {
+        val startedGroups = groups.filter { !it.optional || groupStarted(it, answers) }.map { it.id }.toSet()
+        val relevant = candidates.filter { item ->
+            val selected = selectionFor(item, answers) != null
+            val optionalGroup = groupOf(item)?.let { it.optional && it.id !in startedGroups } ?: false
+            selected || (!item.optional && !optionalGroup)
+        }
+        val selected = relevant.mapNotNull { selectionFor(it, answers) }
+        val notApplicable = selected.count { it.option.notApplicable }
+        val applicable = relevant.filter { item -> selectionFor(item, answers)?.option?.notApplicable != true }
+        val rawTotal = selected.filter { !it.option.notApplicable }.sumOf { it.option.score }
+        val total = totalFloor?.let { max(rawTotal, it) } ?: rawTotal
+        val min = applicable.sumOf { it.minScore }.let { m -> totalFloor?.let { max(m, it) } ?: m }
         return ScoreResult(
             total = total,
-            max = if (headline != null) headline.maxScore else relevant.sumOf { it.maxScore },
-            answered = selected.size,
-            required = relevant.size,
-            band = if (complete) bandFor(total) else null,
-            skipped = answerableItems.size - relevant.size,
-            min = if (headline != null) headline.minScore else relevant.sumOf { it.minScore },
-        )
-    }
-
-    fun score(answers: AssessmentAnswers): ScoreResult = score(answers.items)
-
-    /** Subtotale di un'area: somma dei livelli dei suoi item compilati. */
-    fun groupScore(group: ToolGroup, answers: AssessmentAnswers): ScoreResult {
-        val groupItems = itemsOf(group).filter { !it.isComputed }
-        val relevant = groupItems.filter { !it.optional || selectionFor(it, answers) != null }
-        val selected = relevant.mapNotNull { selectionFor(it, answers) }
-        return ScoreResult(
-            total = selected.sumOf { it.option.score },
-            max = relevant.sumOf { it.maxScore },
+            max = applicable.sumOf { it.maxScore },
             answered = selected.size,
             required = relevant.size,
             band = null,
-            skipped = groupItems.size - relevant.size,
-            min = relevant.sumOf { it.minScore },
+            // Le aree facoltative non iniziate non sono «prove non somministrate»: contano solo gli item facoltativi.
+            skipped = candidates.count { it.optional && it !in relevant },
+            min = min,
+            notApplicable = notApplicable,
         )
     }
+
+    /** answers: itemId -> indice opzione (senza campi: le varianti e le aree facoltative usano i valori di base). */
+    fun score(answers: Map<String, Int>): ScoreResult = score(AssessmentAnswers(items = answers))
+
+    fun score(answers: AssessmentAnswers): ScoreResult {
+        val headline = headlineItem
+        if (headline != null) {
+            val relevant = answerableItems.filter { !it.optional || selectionFor(it, answers) != null }
+            val selected = relevant.mapNotNull { selectionFor(it, answers) }
+            val complete = selected.size == relevant.size
+            val total = selectionFor(headline, answers)?.option?.score ?: 0
+            return ScoreResult(
+                total = total,
+                max = headline.maxScore,
+                answered = selected.size,
+                required = relevant.size,
+                band = if (complete) bandFor(total) else null,
+                skipped = answerableItems.size - relevant.size,
+                min = headline.minScore,
+            )
+        }
+        val result = scoreOf(answerableItems, answers)
+        val fractionOverride = if (groupPercentMean && groups.isNotEmpty()) {
+            val started = groups.filter { !it.optional || groupStarted(it, answers) }.map { groupScore(it, answers) }
+            if (started.isEmpty()) 0f else started.map { it.fraction }.average().toFloat()
+        } else {
+            null
+        }
+        return result.copy(
+            band = if (result.isComplete) bandFor(result.total) else null,
+            fractionOverride = fractionOverride,
+        )
+    }
+
+    /** Subtotale di un'area: somma dei livelli dei suoi item compilati. */
+    fun groupScore(group: ToolGroup, answers: AssessmentAnswers): ScoreResult =
+        scoreOf(itemsOf(group).filter { !it.isComputed }, answers)
 
     /** Esito dell'albero decisionale di un item, se il livello è stato scelto con la guida. */
     fun decisionOutcome(item: ToolItem, answers: AssessmentAnswers): DecisionOutcome? {

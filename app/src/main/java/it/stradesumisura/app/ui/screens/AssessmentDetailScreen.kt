@@ -71,6 +71,7 @@ import it.stradesumisura.app.ui.components.GroupSubtotals
 import it.stradesumisura.app.ui.components.LabeledValue
 import it.stradesumisura.app.ui.components.ScoreHighlights
 import it.stradesumisura.app.ui.components.SectionHeader
+import it.stradesumisura.app.ui.components.SectionLabel
 import it.stradesumisura.app.ui.components.StradeTopBar
 import it.stradesumisura.app.ui.viewmodel.AppViewModelFactory
 import it.stradesumisura.app.ui.viewmodel.AssessmentDetailViewModel
@@ -206,6 +207,9 @@ fun AssessmentDetailScreen(
                     if (group != null && tool.itemsOf(group).firstOrNull()?.id == toolItem.id) {
                         item(key = "group_${group.id}") { GroupHeaderRow(tool = tool, group = group, answers = state.answers) }
                     }
+                    toolItem.section?.let { section ->
+                        item(key = "section_${toolItem.id}") { SectionLabel(section) }
+                    }
                     item(key = toolItem.id) {
                         val selection = tool.selectionFor(toolItem, state.answers)
                         val noteKey = selection?.item?.id ?: toolItem.id
@@ -213,6 +217,7 @@ fun AssessmentDetailScreen(
                             number = tool.numberOf(toolItem) ?: "=",
                             item = toolItem,
                             selection = selection,
+                            formatScore = tool::formatScore,
                             note = state.answers.itemNotes[noteKey] ?: state.answers.itemNotes[toolItem.id],
                             highlighted = toolItem.id in tool.highlightedItemIds,
                             explanation = if (toolItem.isComputed) tool.computedExplanation(toolItem, state.answers) else null,
@@ -253,7 +258,21 @@ fun AssessmentDetailScreen(
 @Composable
 private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult, answers: AssessmentAnswers) {
     val band = score.band
-    val totalText = if (score.isComplete || tool.sumsItems) "${score.total}" else "—"
+    val totalText = when {
+        tool.percentHeadline -> if (score.answered == 0) "—" else "${score.percent}%"
+        score.isComplete || tool.sumsItems -> tool.formatScore(score.total)
+        else -> "—"
+    }
+    val maxText = if (tool.percentHeadline) {
+        "  ${tool.formatScore(score.total)} / ${tool.formatScore(score.max)}"
+    } else {
+        " / ${tool.formatScore(score.max)}"
+    }
+    val notApplicableText = if (score.notApplicable > 0) {
+        " ${score.notApplicable} ${if (score.notApplicable == 1) "voce non applicabile esclusa" else "voci non applicabili escluse"} dal massimo."
+    } else {
+        ""
+    }
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -268,7 +287,7 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult, answers: Ass
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(totalText, style = MaterialTheme.typography.displayMedium)
                 Text(
-                    " / ${score.max}",
+                    maxText,
                     style = MaterialTheme.typography.titleLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 8.dp),
@@ -286,8 +305,8 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult, answers: Ass
                     Spacer(Modifier.height(10.dp))
                     Text(band.description, style = MaterialTheme.typography.bodyMedium)
                 }
-                !tool.hasBands && score.isComplete && tool.countsAnswers -> Text(
-                    "${score.percent}% di risposte corrette (${score.total} su ${score.max}).$skippedText",
+                !tool.hasBands && score.isComplete && tool.showsPercent -> Text(
+                    "${score.percent}% ${tool.percentNoun} (${tool.formatScore(score.total)} su ${tool.formatScore(score.max)}).$skippedText$notApplicableText",
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 !tool.hasBands && score.isComplete -> Text(
@@ -298,7 +317,7 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult, answers: Ass
                     "Valutazione parziale: ${score.answered} ${tool.itemNounPlural} su ${score.required}. " +
                         when {
                             tool.hasBands -> "Completa la valutazione per ottenere l'interpretazione."
-                            tool.countsAnswers -> "Finora ${score.percent}% di risposte corrette."
+                            tool.showsPercent -> "Finora ${score.percent}% ${tool.percentNoun}."
                             else -> "Il punteggio totale ha senso solo con tutte le ${tool.itemNounPlural} compilate."
                         } +
                         skippedText,
@@ -338,13 +357,13 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult, answers: Ass
                 )
                 Spacer(Modifier.height(4.dp))
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("${score.min}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(tool.formatScore(score.min), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Text(
-                        if (tool.countsAnswers) "${score.percent}%" else "${score.total}",
+                        if (tool.showsPercent) "${score.percent}%" else tool.formatScore(score.total),
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    Text("${score.max}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(tool.formatScore(score.max), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -405,6 +424,7 @@ private fun DetailRow(
     number: String,
     item: ToolItem,
     selection: Selection?,
+    formatScore: (Int) -> String,
     note: String?,
     highlighted: Boolean = false,
     explanation: String? = null,
@@ -464,6 +484,21 @@ private fun DetailRow(
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (selection == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 )
+                val optionDescription = selection?.option?.description?.takeIf { it.isNotBlank() && item.multiSelect }
+                if (optionDescription != null) {
+                    Text(
+                        optionDescription,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (selection?.option?.notApplicable == true) {
+                    Text(
+                        "Non applicabile: esclusa dal punteggio massimo",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
                 if (failedSubtasks.isNotEmpty()) {
                     Spacer(Modifier.height(4.dp))
                     Text(
@@ -501,7 +536,11 @@ private fun DetailRow(
             }
             Spacer(Modifier.width(12.dp))
             Column(horizontalAlignment = Alignment.End) {
-                val scoreText = selection?.option?.score?.toString() ?: "—"
+                val scoreText = when {
+                    selection == null -> "—"
+                    selection.option.notApplicable -> "n.a."
+                    else -> formatScore(selection.option.score)
+                }
                 if ((highlighted || item.isComputed) && selection != null) {
                     Surface(
                         shape = MaterialTheme.shapes.small,
@@ -519,7 +558,7 @@ private fun DetailRow(
                     Text(scoreText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
                 Text(
-                    "su ${shown.maxScore}",
+                    "su ${formatScore(shown.maxScore)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

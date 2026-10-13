@@ -2,8 +2,20 @@ package it.stradesumisura.app.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import it.stradesumisura.app.ui.components.ItemImage
+import it.stradesumisura.app.ui.components.SectionLabel
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -61,6 +73,7 @@ import it.stradesumisura.app.domain.AssessmentAnswers
 import it.stradesumisura.app.domain.ScoreResult
 import it.stradesumisura.app.domain.Selection
 import it.stradesumisura.app.domain.ToolDefinition
+import it.stradesumisura.app.domain.ToolField
 import it.stradesumisura.app.domain.ToolItem
 import it.stradesumisura.app.domain.ToolOption
 import it.stradesumisura.app.ui.components.BandChip
@@ -173,6 +186,14 @@ fun AssessmentFormScreen(
                             )
                             tool.fields.forEach { field ->
                                 val hint = field.placeholder
+                                if (field.isChoice) {
+                                    ChoiceField(
+                                        field = field,
+                                        value = state.answers.fields[field.id],
+                                        onSelect = { viewModel.setField(field.id, it) },
+                                    )
+                                    return@forEach
+                                }
                                 OutlinedTextField(
                                     value = state.answers.fields[field.id] ?: "",
                                     onValueChange = { viewModel.setField(field.id, it) },
@@ -197,21 +218,30 @@ fun AssessmentFormScreen(
                     if (group != null && tool.itemsOf(group).firstOrNull()?.id == toolItem.id) {
                         item(key = "group_${group.id}") { GroupHeaderRow(tool = tool, group = group, answers = state.answers) }
                     }
+                    toolItem.section?.let { section ->
+                        item(key = "section_${toolItem.id}") { SectionLabel(section) }
+                    }
                     item(key = toolItem.id) {
                         val alternative = tool.alternativeFor(toolItem.id)
                         val useAlternative = alternative != null && state.usesAlternative(toolItem.id)
                         val shown = if (useAlternative && alternative != null) alternative else toolItem
+                        val variantMissing = tool.variantFieldId != null && tool.variantOf(state.answers) == null &&
+                            shown.options.any { it.variantScores.isNotEmpty() }
                         ItemCard(
                             number = tool.numberOf(toolItem) ?: "${index + 1}",
                             item = toolItem,
                             alternative = alternative,
                             shown = shown,
+                            options = tool.optionsFor(shown, state.answers),
                             selection = tool.selectionFor(toolItem, state.answers),
                             useAlternative = useAlternative,
                             note = state.answers.itemNotes[shown.id],
                             subtaskResults = state.answers.subtaskResults[shown.id].orEmpty(),
                             decisionSummary = tool.decisionSummary(shown, state.answers),
+                            formatScore = tool::formatScore,
+                            variantWarning = if (variantMissing) "Indicare il tipo di carrozzina nei dati della valutazione: alcuni punteggi dipendono da esso." else null,
                             onSelect = viewModel::select,
+                            onToggle = viewModel::toggleOption,
                             onToggleAlternative = { viewModel.setUseAlternative(toolItem.id, it) },
                             onNoteChange = { viewModel.setItemNote(shown.id, it) },
                             onSetCount = { viewModel.setCount(shown.id, it) },
@@ -252,7 +282,7 @@ fun AssessmentFormScreen(
 
 @Composable
 private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?, answers: AssessmentAnswers) {
-    val totalText = if (score != null && (score.isComplete || tool.sumsItems)) "${score.total}" else "—"
+    val totalText = if (score != null && (score.isComplete || tool.sumsItems)) tool.formatScore(score.total) else "—"
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -272,7 +302,11 @@ private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?, answers: Ass
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                         Text(
-                            " / ${score?.max ?: 0}",
+                            if (tool.percentHeadline && score != null && score.answered > 0) {
+                                " / ${tool.formatScore(score.max)} · ${score.percent}%"
+                            } else {
+                                " / ${tool.formatScore(score?.max ?: 0)}"
+                            },
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                             modifier = Modifier.padding(bottom = 3.dp),
@@ -304,17 +338,18 @@ private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?, answers: Ass
             val band = score?.band
             when {
                 band != null -> BandChip(band)
-                !tool.hasBands && score != null && tool.countsAnswers -> Text(
+                !tool.hasBands && score != null && tool.showsPercent -> Text(
                     buildString {
-                        append(if (score.answered == 0) "Nessuna prova valutata." else "${score.percent}% di risposte corrette finora.")
+                        append(if (score.answered == 0) "Nessuna ${tool.itemNounSingular} valutata." else "${score.percent}% ${tool.percentNoun} finora.")
                         if (score.skipped > 0) append(" ${score.skipped} ${if (score.skipped == 1) "prova facoltativa non valutata" else "prove facoltative non valutate"}.")
+                        if (score.notApplicable > 0) append(" ${score.notApplicable} ${if (score.notApplicable == 1) "voce non applicabile esclusa" else "voci non applicabili escluse"} dal massimo.")
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
                 !tool.hasBands && score != null -> Text(
                     if (score.answered == 0) {
-                        "Nessuna ${tool.itemNounSingular} valutata: il punteggio è la somma dei livelli (da ${tool.minScore} a ${tool.maxScore})."
+                        "Nessuna ${tool.itemNounSingular} valutata: il punteggio è la somma dei livelli (intervallo ${tool.scoreRangeLabel})."
                     } else {
                         "Somma dei livelli delle ${tool.itemNounPlural} compilate (intervallo ${tool.scoreRangeLabel})."
                     },
@@ -360,12 +395,16 @@ private fun ItemCard(
     item: ToolItem,
     alternative: ToolItem?,
     shown: ToolItem,
+    options: List<ToolOption>,
     selection: Selection?,
     useAlternative: Boolean,
     note: String?,
     subtaskResults: Map<Int, Boolean>,
     decisionSummary: String?,
+    formatScore: (Int) -> String,
+    variantWarning: String?,
     onSelect: (itemId: String, optionIndex: Int) -> Unit,
+    onToggle: (itemId: String, optionIndex: Int) -> Unit,
     onToggleAlternative: (Boolean) -> Unit,
     onNoteChange: (String) -> Unit,
     onSetCount: (Int?) -> Unit,
@@ -427,12 +466,20 @@ private fun ItemCard(
                 if (selection != null) {
                     Spacer(Modifier.width(8.dp))
                     Text(
-                        "${selection.option.score}/${shown.maxScore}",
+                        if (selection.option.notApplicable) "n.a." else "${formatScore(selection.option.score)}/${formatScore(shown.maxScore)}",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.secondary,
                     )
                 }
+            }
+            shown.imageRes?.let { image ->
+                Spacer(Modifier.height(10.dp))
+                ItemImage(image)
+            }
+            if (variantWarning != null) {
+                Spacer(Modifier.height(8.dp))
+                Text(variantWarning, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             val definition = shown.description
             if (definition != null) {
@@ -507,10 +554,35 @@ private fun ItemCard(
                     value = selection?.option?.score,
                     onSetCount = onSetCount,
                 )
+                shown.multiSelect && shown.hasOptionGroups -> GroupedMultiSelect(
+                    item = shown,
+                    options = options,
+                    mask = if (selection != null && selection.item.id == shown.id) selection.optionIndex else 0,
+                    formatScore = formatScore,
+                    onToggle = { onToggle(shown.id, it) },
+                )
+                shown.multiSelect -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val mask = if (selection != null && selection.item.id == shown.id) selection.optionIndex else 0
+                    options.forEachIndexed { index, option ->
+                        OptionRow(
+                            option = option,
+                            selected = mask and (1 shl index) != 0,
+                            scoreText = optionScoreText(option, formatScore),
+                            multi = true,
+                            onClick = { onToggle(shown.id, index) },
+                        )
+                    }
+                }
                 else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    shown.options.forEachIndexed { index, option ->
+                    options.forEachIndexed { index, option ->
                         val selected = selection != null && selection.item.id == shown.id && selection.optionIndex == index
-                        OptionRow(option = option, selected = selected, onClick = { onSelect(shown.id, index) })
+                        OptionRow(
+                            option = option,
+                            selected = selected,
+                            scoreText = optionScoreText(option, formatScore),
+                            multi = false,
+                            onClick = { onSelect(shown.id, index) },
+                        )
                     }
                 }
             }
@@ -690,8 +762,12 @@ private fun CountInput(item: ToolItem, value: Int?, onSetCount: (Int?) -> Unit) 
     }
 }
 
+/** Testo del punteggio di un'opzione: il valore formattato oppure «n.a.» per le opzioni non applicabili. */
+private fun optionScoreText(option: ToolOption, formatScore: (Int) -> String): String =
+    if (option.notApplicable) "n.a." else formatScore(option.score)
+
 @Composable
-private fun OptionRow(option: ToolOption, selected: Boolean, onClick: () -> Unit) {
+private fun OptionRow(option: ToolOption, selected: Boolean, scoreText: String, multi: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
         shape = MaterialTheme.shapes.small,
@@ -703,34 +779,180 @@ private fun OptionRow(option: ToolOption, selected: Boolean, onClick: () -> Unit
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(start = 6.dp, end = 12.dp, top = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.Top) {
-            RadioButton(selected = selected, onClick = null)
+            if (multi) Checkbox(checked = selected, onCheckedChange = null) else RadioButton(selected = selected, onClick = null)
+            option.imageRes?.let { image ->
+                Image(
+                    painter = painterResource(image),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .padding(top = 6.dp, end = 10.dp)
+                        .size(64.dp)
+                        .clip(MaterialTheme.shapes.small),
+                )
+            }
             Column(
                 Modifier
                     .weight(1f)
                     .padding(top = 10.dp),
             ) {
                 Text(option.title, style = MaterialTheme.typography.titleSmall)
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    option.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (option.description.isNotBlank()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        option.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
             Spacer(Modifier.width(10.dp))
-            Box(
-                Modifier
-                    .padding(top = 8.dp)
-                    .clip(CircleShape)
-                    .background(
-                        if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceContainerHigh,
-                    )
-                    .padding(horizontal = 10.dp, vertical = 4.dp),
-            ) {
+            ScoreBadge(scoreText, selected)
+        }
+    }
+}
+
+@Composable
+private fun ScoreBadge(text: String, selected: Boolean) {
+    Box(
+        Modifier
+            .padding(top = 8.dp)
+            .clip(CircleShape)
+            .background(
+                if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.surfaceContainerHigh,
+            )
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+    ) {
+        Text(
+            text,
+            style = MaterialTheme.typography.labelLarge,
+            color = if (selected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+/** Campo a scelta (es. il tipo di carrozzina): pulsanti segmentati con l'etichetta sopra. */
+@Composable
+private fun ChoiceField(field: ToolField, value: String?, onSelect: (String) -> Unit) {
+    Column {
+        Text(
+            field.label,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (value == null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Spacer(Modifier.height(6.dp))
+        SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth()) {
+            field.choices.forEachIndexed { index, choice ->
+                SegmentedButton(
+                    selected = value == choice,
+                    onClick = { onSelect(choice) },
+                    shape = SegmentedButtonDefaults.itemShape(index = index, count = field.choices.size),
+                ) { Text(choice, maxLines = 1) }
+            }
+        }
+    }
+}
+
+/**
+ * Scelta multipla raggruppata (es. le posizioni della mano nella TAI): si sceglie prima il gruppo
+ * (la superficie) con i chip, poi le opzioni del gruppo, con la loro immagine, in una griglia.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GroupedMultiSelect(
+    item: ToolItem,
+    options: List<ToolOption>,
+    mask: Int,
+    formatScore: (Int) -> String,
+    onToggle: (Int) -> Unit,
+) {
+    val selectedGroup = item.selectedIndices(mask).firstOrNull()?.let { options[it].group }
+    var currentGroup by rememberSaveable(item.id) { mutableStateOf(selectedGroup) }
+    LaunchedEffect(selectedGroup) { if (selectedGroup != null) currentGroup = selectedGroup }
+    Column {
+        Text(
+            item.optionGroupLabel ?: "Gruppo",
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            item.optionGroups.forEach { group ->
+                FilterChip(
+                    selected = currentGroup == group,
+                    onClick = { currentGroup = group },
+                    label = { Text(group) },
+                )
+            }
+        }
+        val group = currentGroup
+        if (group == null) {
+            Text(
+                "Scegliere la superficie per vedere le posizioni della mano.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        } else {
+            Spacer(Modifier.height(8.dp))
+            val entries = options.withIndex().filter { it.value.group == group }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                entries.chunked(2).forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        row.forEach { entry ->
+                            ImageOptionCard(
+                                option = entry.value,
+                                selected = mask and (1 shl entry.index) != 0,
+                                scoreText = optionScoreText(entry.value, formatScore),
+                                onClick = { onToggle(entry.index) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (row.size == 1) Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ImageOptionCard(option: ToolOption, selected: Boolean, scoreText: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Surface(
+        onClick = onClick,
+        shape = MaterialTheme.shapes.small,
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(
+            if (selected) 2.dp else 1.dp,
+            if (selected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant,
+        ),
+        modifier = modifier,
+    ) {
+        Column {
+            option.imageRes?.let { image ->
+                Image(
+                    painter = painterResource(image),
+                    contentDescription = option.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .aspectRatio(1.15f),
+                )
+            }
+            Row(Modifier.padding(start = 2.dp, end = 8.dp, top = 2.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = selected, onCheckedChange = null)
                 Text(
-                    "${option.score}",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = if (selected) MaterialTheme.colorScheme.onSecondary else MaterialTheme.colorScheme.onSurface,
+                    option.title,
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(4.dp))
+                ScoreBadge(scoreText, selected)
+            }
+            if (option.description.isNotBlank()) {
+                Text(
+                    option.description,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 10.dp, end = 10.dp, bottom = 8.dp),
                 )
             }
         }

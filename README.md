@@ -38,6 +38,17 @@ diagonale color malva `#C7ADBF`), tipografia geometrica e un'interfaccia pulita 
     resta modificabile. Vescica e Alvo percorrono due alberi (livello di assistenza e frequenza
     degli episodi) e registrano il più basso; la scheda e il report indicano quando il livello è
     stato scelto con la guida. Campi per la modalità di locomozione, comprensione ed espressione.
+  - **TAI 4.0 – Transfer Assessment Instrument** (Worobey, Rice e coll., 2018; HERL, Università di
+    Pittsburgh), in tre strumenti: trasferimenti autonomi (18 voci), assistiti senza sollevatore
+    (21 voci) e con sollevatore (5 voci). Le voci seguono le tre fasi del modulo (preparazione della
+    carrozzina, preparazione del corpo, volo e atterraggio) più ausili e assistente; i punteggi
+    valgono 1, 0,5, 0 o negativi, cambiano con il tipo di carrozzina (manuale o elettrica, scelto
+    nei dati della valutazione) e le opzioni «non applicabile» escono dal massimo. Le posizioni
+    della mano di spinta e della mano guida si scelgono per superficie con le foto del modulo
+    (scelta multipla, punteggio = media delle posizioni); le voci «segnare tutte le voci che si
+    applicano» sommano i punteggi senza scendere sotto 0. Punteggio di ogni trasferimento in
+    percentuale del massimo applicabile; il secondo trasferimento è facoltativo e, se compilato,
+    il totale è la media delle due percentuali.
 - **Compilazione guidata** – livelli descritti per esteso, punteggio e completamento aggiornati in
   tempo reale, gestione dell'alternativa deambulazione/carrozzina, data, valutatore, contesto e
   osservazioni. Le valutazioni incomplete si salvano come parziali.
@@ -66,7 +77,7 @@ Struttura principale del codice (`app/src/main/java/it/stradesumisura/app`):
 ```
 data/        entità Room, DAO, repository, impostazioni
 domain/      modello generico degli strumenti (ToolDefinition) e registro degli strumenti
-domain/tools/ definizione delle singole scale (BarthelModifiedIndex.kt, AdlObservation.kt, PerformanceQualityRatingScale.kt, FunctionalMonetarySkills.kt, FunctionalIndependenceMeasure.kt)
+domain/tools/ definizione delle singole scale (BarthelModifiedIndex.kt, AdlObservation.kt, PerformanceQualityRatingScale.kt, FunctionalMonetarySkills.kt, FunctionalIndependenceMeasure.kt, TransferAssessmentInstrument.kt)
 pdf/         impaginazione e generazione dei report
 ui/          tema, componenti, schermate, ViewModel e navigazione
 ```

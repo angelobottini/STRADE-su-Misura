@@ -45,18 +45,32 @@ fun GroupSubtotals(
                     )
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
-                            if (score.answered == 0) "—" else "${score.total}",
+                            when {
+                                score.answered == 0 -> "—"
+                                tool.percentHeadline -> "${score.percent}%"
+                                else -> tool.formatScore(score.total)
+                            },
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Black,
                         )
                         Text(
-                            " / ${score.max}",
+                            if (tool.percentHeadline) {
+                                "  ${if (score.answered == 0) "—" else tool.formatScore(score.total)} / ${tool.formatScore(score.max)}"
+                            } else {
+                                " / ${tool.formatScore(score.max)}"
+                            },
                             style = MaterialTheme.typography.labelMedium,
                             color = labelColor,
                             modifier = Modifier.padding(bottom = 3.dp),
                         )
                     }
-                    if (!score.isComplete) {
+                    if (score.answered == 0 && group.optional) {
+                        Text(
+                            "facoltativo",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = labelColor,
+                        )
+                    } else if (!score.isComplete) {
                         Text(
                             "${score.answered} di ${score.required} ${tool.itemNounPlural}",
                             style = MaterialTheme.typography.labelSmall,
@@ -77,7 +91,11 @@ fun GroupHeaderRow(tool: ToolDefinition, group: ToolGroup, answers: AssessmentAn
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             Text(group.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.weight(1f))
             Text(
-                if (score.answered == 0) "— / ${score.max}" else "${score.total} / ${score.max}",
+                buildString {
+                    append(if (score.answered == 0) "—" else tool.formatScore(score.total))
+                    append(" / ${tool.formatScore(score.max)}")
+                    if (tool.percentHeadline && score.answered > 0) append(" · ${score.percent}%")
+                },
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.secondary,

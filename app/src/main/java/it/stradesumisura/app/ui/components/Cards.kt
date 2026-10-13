@@ -126,7 +126,7 @@ fun ToolCard(
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 InfoPill(tool.duration)
-                InfoPill("${tool.answerableItems.size} ${tool.itemNounPlural}")
+                InfoPill(tool.itemsCountText)
                 InfoPill("${tool.totalLabel} ${tool.scoreRangeLabel}")
             }
             Spacer(Modifier.height(16.dp))
@@ -178,7 +178,15 @@ fun AssessmentListItem(
                 )
             }
             Spacer(Modifier.width(8.dp))
-            ScoreChip(assessment.totalScore, assessment.maxScore, band, assessment.isComplete)
+            val text = when {
+                tool == null -> "${assessment.totalScore}/${assessment.maxScore}"
+                tool.percentHeadline -> {
+                    val percent = if (assessment.maxScore > 0) (assessment.totalScore * 100f / assessment.maxScore + 0.5f).toInt().coerceIn(0, 100) else 0
+                    "$percent%"
+                }
+                else -> "${tool.formatScore(assessment.totalScore)}/${tool.formatScore(assessment.maxScore)}"
+            }
+            ScoreChip(text, band, assessment.isComplete)
         }
     }
 }

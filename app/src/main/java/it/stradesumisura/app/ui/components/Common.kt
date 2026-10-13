@@ -1,7 +1,11 @@
 package it.stradesumisura.app.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -126,9 +130,35 @@ fun InitialsAvatar(initials: String, modifier: Modifier = Modifier, size: Dp = 4
     }
 }
 
+/** Titolo di sezione tra le voci di uno strumento (es. «Fase I – Preparazione della carrozzina»). */
+@Composable
+fun SectionLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text.uppercase(),
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.secondary,
+        modifier = modifier.padding(top = 4.dp),
+    )
+}
+
+/** Immagine illustrativa di una voce (es. gli schemi della TAI), adattata alla larghezza disponibile. */
+@Composable
+fun ItemImage(imageRes: Int, modifier: Modifier = Modifier) {
+    Image(
+        painter = painterResource(imageRes),
+        contentDescription = null,
+        contentScale = ContentScale.Fit,
+        alignment = Alignment.CenterStart,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(max = 200.dp)
+            .clip(MaterialTheme.shapes.small),
+    )
+}
+
 /** Score pill: coloured by the interpretation band, neutral when the assessment is incomplete. */
 @Composable
-fun ScoreChip(total: Int, max: Int, band: ScoreBand?, complete: Boolean, modifier: Modifier = Modifier) {
+fun ScoreChip(text: String, band: ScoreBand?, complete: Boolean, modifier: Modifier = Modifier) {
     val accent = band?.let { Color(it.color) } ?: MaterialTheme.colorScheme.outline
     Row(
         modifier = modifier
@@ -140,7 +170,7 @@ fun ScoreChip(total: Int, max: Int, band: ScoreBand?, complete: Boolean, modifie
         Box(Modifier.size(8.dp).clip(CircleShape).background(accent))
         Spacer(Modifier.width(6.dp))
         Text(
-            text = if (complete) "$total/$max" else "$total/$max · parziale",
+            text = if (complete) text else "$text · parziale",
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurface,
         )

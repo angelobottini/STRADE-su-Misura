@@ -5,6 +5,7 @@ import it.stradesumisura.app.domain.tools.BarthelModifiedIndex
 import it.stradesumisura.app.domain.tools.FunctionalIndependenceMeasure
 import it.stradesumisura.app.domain.tools.FunctionalMonetarySkills
 import it.stradesumisura.app.domain.tools.PerformanceQualityRatingScale
+import it.stradesumisura.app.domain.tools.TransferAssessmentInstrument
 
 /**
  * Catalogo degli strumenti disponibili nell'app.
@@ -18,6 +19,9 @@ object ToolRegistry {
         PerformanceQualityRatingScale.definition,
         FunctionalMonetarySkills.definition,
         FunctionalIndependenceMeasure.definition,
+        TransferAssessmentInstrument.independent,
+        TransferAssessmentInstrument.assisted,
+        TransferAssessmentInstrument.lift,
     )
 
     fun byId(id: String): ToolDefinition? = tools.firstOrNull { it.id == id }

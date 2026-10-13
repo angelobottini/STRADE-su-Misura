@@ -342,6 +342,28 @@ class AssessmentFormViewModel(container: AppContainer, handle: SavedStateHandle)
         }
     }
 
+    /**
+     * Seleziona o deseleziona un'opzione di un item a scelta multipla (maschera di bit). Le opzioni
+     * «non applicabile» e quelle di un gruppo diverso (es. un'altra superficie) escludono le altre.
+     */
+    fun toggleOption(itemId: String, optionIndex: Int) {
+        val item = _state.value.tool?.item(itemId) ?: return
+        if (!item.multiSelect) return
+        val option = item.options.getOrNull(optionIndex) ?: return
+        _state.update { current ->
+            val items = current.answers.items.toMutableMap()
+            var mask = item.toggled(items[itemId] ?: 0, optionIndex)
+            if (mask and (1 shl optionIndex) != 0) {
+                item.options.forEachIndexed { index, other ->
+                    val exclusive = option.notApplicable || other.notApplicable || other.group != option.group
+                    if (index != optionIndex && exclusive) mask = mask and (1 shl index).inv()
+                }
+            }
+            if (mask == 0) items.remove(itemId) else items[itemId] = mask
+            current.copy(answers = current.answers.copy(items = items), dirty = true)
+        }
+    }
+
     /** Azzera un item a conteggio (sotto-prove comprese): torna «non valutato». */
     fun clearItem(itemId: String) = _state.update { current ->
         current.copy(
