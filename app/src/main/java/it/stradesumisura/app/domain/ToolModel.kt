@@ -42,14 +42,66 @@ data class ToolItem(
     val computed: ComputedScore? = null,
     /** Titolo breve per chip e riquadri compatti (es. "Qualità" per "Qualità di performance o del prodotto"). */
     val shortTitle: String? = null,
+    /**
+     * Se valorizzato, l'item è a conteggio: il punteggio è il numero di risposte corrette da 0 a
+     * questo massimo (le opzioni sono generate da [count]) invece della scelta di un livello.
+     */
+    val countMax: Int? = null,
+    /** Unità del conteggio, es. "risposte corrette"; usata nei titoli delle opzioni generate. */
+    val countUnit: String = "risposte corrette",
+    /**
+     * Sotto-prove di un item a conteggio: l'operatore segna ciascuna come riuscita o non riuscita
+     * e il punteggio è il numero di quelle riuscite. L'item è compilato quando sono tutte segnate.
+     */
+    val subtasks: List<String> = emptyList(),
+    /**
+     * Item facoltativo (es. una sezione somministrata solo ad alcune persone): se non compilato
+     * non conta né come mancante né nel punteggio massimo della valutazione.
+     */
+    val optional: Boolean = false,
+    /** Numero mostrato accanto all'item (es. "7a") al posto della numerazione progressiva. */
+    val number: String? = null,
 ) {
     val compactTitle: String get() = shortTitle ?: title
     val maxScore: Int get() = options.maxOf { it.score }
     val minScore: Int get() = options.minOf { it.score }
     val isComputed: Boolean get() = computed != null
+    val isCount: Boolean get() = countMax != null
+    val hasSubtasks: Boolean get() = subtasks.isNotEmpty()
 
     /** Intervallo dei punteggi dell'item, es. "0–3" oppure "1–10". */
     val scoreRangeLabel: String get() = "$minScore–$maxScore"
+
+    companion object {
+        /** Item a conteggio: punteggio = numero di risposte corrette su [max]. */
+        fun count(
+            id: String,
+            title: String,
+            max: Int,
+            hint: String? = null,
+            description: String? = null,
+            subtasks: List<String> = emptyList(),
+            noteLabel: String? = null,
+            optional: Boolean = false,
+            number: String? = null,
+            unit: String = "risposte corrette",
+        ): ToolItem {
+            require(subtasks.isEmpty() || subtasks.size == max) { "Le sotto-prove di $id devono essere $max" }
+            return ToolItem(
+                id = id,
+                title = title,
+                options = (0..max).map { n -> ToolOption(n, "$n $unit su $max", "") },
+                hint = hint,
+                description = description,
+                noteLabel = noteLabel,
+                countMax = max,
+                countUnit = unit,
+                subtasks = subtasks,
+                optional = optional,
+                number = number,
+            )
+        }
+    }
 }
 
 /** Campo di testo raccolto prima degli item (es. compito osservato, diagnosi). */
@@ -84,6 +136,8 @@ data class AssessmentAnswers(
     val itemNotes: Map<String, String> = emptyMap(),
     /** fieldId -> valore del campo di testo. */
     val fields: Map<String, String> = emptyMap(),
+    /** itemId -> (indice sotto-prova -> riuscita) per gli item a conteggio con sotto-prove. */
+    val subtaskResults: Map<String, Map<Int, Boolean>> = emptyMap(),
 )
 
 /** L'opzione effettivamente selezionata (o calcolata) per un item principale. */
@@ -100,9 +154,12 @@ data class ScoreResult(
     val answered: Int,
     val required: Int,
     val band: ScoreBand?,
+    /** Item facoltativi non somministrati (esclusi da [required] e da [max]). */
+    val skipped: Int = 0,
 ) {
     val isComplete: Boolean get() = answered == required
     val fraction: Float get() = if (max == 0) 0f else total.toFloat() / max
+    val percent: Int get() = (fraction * 100f).toInt()
 }
 
 data class ToolDefinition(
@@ -229,8 +286,10 @@ data class ToolDefinition(
 
     /** answers: itemId -> indice opzione. */
     fun score(answers: Map<String, Int>): ScoreResult {
-        val selected = answerableItems.mapNotNull { selectionFor(it, answers) }
-        val complete = selected.size == answerableItems.size
+        // Gli item facoltativi non compilati non contano né come mancanti né nel massimo.
+        val relevant = answerableItems.filter { !it.optional || selectionFor(it, answers) != null }
+        val selected = relevant.mapNotNull { selectionFor(it, answers) }
+        val complete = selected.size == relevant.size
         val headline = headlineItem
         val total = if (headline != null) {
             selectionFor(headline, answers)?.option?.score ?: 0
@@ -239,14 +298,28 @@ data class ToolDefinition(
         }
         return ScoreResult(
             total = total,
-            max = maxScore,
+            max = if (headline != null) headline.maxScore else relevant.sumOf { it.maxScore },
             answered = selected.size,
-            required = answerableItems.size,
+            required = relevant.size,
             band = if (complete) bandFor(total) else null,
+            skipped = answerableItems.size - relevant.size,
         )
     }
 
     fun score(answers: AssessmentAnswers): ScoreResult = score(answers.items)
+
+    /** True se lo strumento prevede fasce interpretative; altrimenti il punteggio si legge in percentuale. */
+    val hasBands: Boolean get() = bands.isNotEmpty()
+
+    /** Numero da mostrare accanto a un item: quello dichiarato oppure la posizione progressiva. */
+    fun numberOf(item: ToolItem): String? =
+        item.number ?: answerableItems.indexOf(item).takeIf { it >= 0 }?.let { "${it + 1}" }
+
+    /** Sotto-prove non riuscite di un item a conteggio, nell'ordine, come "3) testo". */
+    fun failedSubtasks(item: ToolItem, answers: AssessmentAnswers): List<String> {
+        val results = answers.subtaskResults[item.id] ?: return emptyList()
+        return item.subtasks.mapIndexedNotNull { index, text -> if (results[index] == false) "${index + 1}) $text" else null }
+    }
 
     /** Testo che riassume la valutazione negli elenchi, se lo strumento lo prevede. */
     fun summaryOf(answers: AssessmentAnswers): String? =

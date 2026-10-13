@@ -139,7 +139,7 @@ fun ToolInfoScreen(
                 item {
                     InfoSection(tool.itemsSectionTitle) {
                         tool.primaryItems.forEach { item ->
-                            val number = tool.answerableItems.indexOf(item).takeIf { it >= 0 }?.let { "${it + 1}. " } ?: ""
+                            val number = tool.numberOf(item)?.let { "$it. " } ?: ""
                             Row(
                                 Modifier
                                     .fillMaxWidth()
@@ -147,7 +147,11 @@ fun ToolInfoScreen(
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 Text(
-                                    if (item.isComputed) "$number${item.title} (calcolata automaticamente)" else "$number${item.title}",
+                                    when {
+                                        item.isComputed -> "$number${item.title} (calcolata automaticamente)"
+                                        item.optional -> "$number${item.title} (facoltativa)"
+                                        else -> "$number${item.title}"
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.weight(1f),
                                 )
@@ -178,6 +182,14 @@ fun ToolInfoScreen(
                 }
                 item {
                     InfoSection("Interpretazione del punteggio") {
+                        if (!tool.hasBands) {
+                            Text(
+                                "Lo strumento non prevede fasce interpretative: il punteggio è il numero di risposte " +
+                                    "corrette per ogni prova e in totale (fino a ${tool.maxScore}), letto anche in percentuale. " +
+                                    "Le prove facoltative non somministrate non entrano nel totale né nel massimo.",
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
                         tool.bands.forEach { band ->
                             Row(Modifier.padding(vertical = 6.dp), verticalAlignment = Alignment.Top) {
                                 Box(

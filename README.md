@@ -22,6 +22,13 @@ diagonale color malva `#C7ADBF`), tipografia geometrica e un'interfaccia pulita 
     qualità della performance o del prodotto; il punteggio PQRS è calcolato automaticamente come
     media dei due arrotondata per difetto. I due valori inseriti e quello calcolato sono evidenziati
     nella scheda, nel dettaglio e nel report.
+  - **AFMS – Abilità monetarie funzionali** (Assessment of Functional Monetary Skills, versione
+    italiana in euro): dieci prove pratiche sull'uso del denaro (riconoscimento di monete e
+    banconote, somme, consegna di importi, calcoli scritti, calcolatrice, problemi in parole e la
+    sezione facoltativa su fatture e assegni). Ogni prova è un conteggio di risposte corrette: le
+    sotto-prove si segnano una per una come riuscite o non riuscite durante la somministrazione,
+    con un campo «Commenti» per prova. Senza fasce interpretative: il totale si legge anche in
+    percentuale e le prove facoltative non somministrate non entrano nel massimo.
 - **Compilazione guidata** – livelli descritti per esteso, punteggio e completamento aggiornati in
   tempo reale, gestione dell'alternativa deambulazione/carrozzina, data, valutatore, contesto e
   osservazioni. Le valutazioni incomplete si salvano come parziali.
@@ -50,7 +57,7 @@ Struttura principale del codice (`app/src/main/java/it/stradesumisura/app`):
 ```
 data/        entità Room, DAO, repository, impostazioni
 domain/      modello generico degli strumenti (ToolDefinition) e registro degli strumenti
-domain/tools/ definizione delle singole scale (BarthelModifiedIndex.kt, AdlObservation.kt, PerformanceQualityRatingScale.kt)
+domain/tools/ definizione delle singole scale (BarthelModifiedIndex.kt, AdlObservation.kt, PerformanceQualityRatingScale.kt, FunctionalMonetarySkills.kt)
 pdf/         impaginazione e generazione dei report
 ui/          tema, componenti, schermate, ViewModel e navigazione
 ```
@@ -93,7 +100,11 @@ git). Senza chiave, la build di release viene firmata con la chiave di debug.
    istruzioni, riferimento, item con opzioni e punteggi, fasce interpretative). Gli item possono
    dichiarare `alternativeOf` per le alternative mutuamente esclusive oppure `computed` per i
    punteggi calcolati da altri item (`ComputedScore.MaxOf`, `ComputedScore.FloorMeanOf`);
-   `highlightedItemIds` evidenzia i valori inseriti accanto al punteggio calcolato.
+   `highlightedItemIds` evidenzia i valori inseriti accanto al punteggio calcolato. Gli item a
+   conteggio si creano con `ToolItem.count(...)` (numero di risposte corrette, con eventuali
+   `subtasks` da spuntare una per una); `optional = true` esclude dal massimo le prove non
+   somministrate e `number` fissa l'etichetta (es. "7a"). Uno strumento senza `bands` mostra il
+   punteggio in percentuale.
 2. Registrarlo in `ToolRegistry.tools`.
 
 Compilazione, salvataggio, punteggio, schermate e PDF funzionano automaticamente per ogni

@@ -223,18 +223,18 @@ class AssessmentPdfExporter(private val context: Context) {
         blocks += sectionTitle(tool.itemsSectionTitle)
         val header = tableHeaderBlock(tool)
         blocks += header
-        var number = 0
         tool.primaryItems.forEachIndexed { index, item ->
             val selection = tool.selectionFor(item, answers)
             val noteKey = selection?.item?.id ?: item.id
             val note = answers.itemNotes[noteKey] ?: answers.itemNotes[item.id]
+            val failed = tool.failedSubtasks(item, answers)
             if (item.isComputed) {
                 val explanation = tool.computedExplanation(item, answers)
-                blocks += rowBlock("", item, selection, note, explanation, zebra = false, header = header, emphasised = true, d = d)
+                blocks += rowBlock("", item, selection, note, explanation, failed, zebra = false, header = header, emphasised = true, d = d)
             } else {
-                number += 1
+                val number = tool.numberOf(item)?.let { "$it." } ?: ""
                 val highlighted = item.id in tool.highlightedItemIds
-                blocks += rowBlock("$number.", item, selection, note, null, index % 2 == 1, header, emphasised = highlighted, d = d)
+                blocks += rowBlock(number, item, selection, note, null, failed, index % 2 == 1, header, emphasised = highlighted, d = d)
             }
         }
         if (tool.sumsItems) {
@@ -249,9 +249,11 @@ class AssessmentPdfExporter(private val context: Context) {
             blocks += SpacerBlock(d.gapMedium)
         }
 
-        blocks += sectionTitle("Interpretazione del punteggio")
-        blocks += legendBlock(tool.bands, score, d)
-        blocks += SpacerBlock(if (d.level == 0) 10f else 6f)
+        if (tool.hasBands) {
+            blocks += sectionTitle("Interpretazione del punteggio")
+            blocks += legendBlock(tool.bands, score, d)
+            blocks += SpacerBlock(if (d.level == 0) 10f else 6f)
+        }
         blocks += TextBlock(
             "Riferimento: ${tool.reference}",
             textPaint(d.referenceSize, PdfPalette.muted, PdfFonts.italic),
@@ -365,16 +367,25 @@ class AssessmentPdfExporter(private val context: Context) {
         val kickerPaint = textPaint(7.5f, PdfPalette.mauveDeep, PdfFonts.bold, letterSpacing = 0.12f)
         val labelPaint = textPaint(10.5f, band?.color?.toInt() ?: PdfPalette.graphite, PdfFonts.bold)
         val descPaint = textPaint(7.8f, PdfPalette.graphite)
+        val skippedText = if (score.skipped > 0) {
+            " ${score.skipped} ${if (score.skipped == 1) "prova facoltativa non somministrata" else "prove facoltative non somministrate"}."
+        } else {
+            ""
+        }
         val label = when {
             band != null -> band.label
             !score.isComplete -> "Valutazione incompleta (${score.answered}/${score.required} ${tool.itemNounPlural})"
+            !tool.hasBands -> "${score.percent}% di risposte corrette"
             else -> "—"
         }
         val description = when {
             band != null -> if (d.showBandDescription) band.description else ""
-            !score.isComplete -> "Punteggio parziale: completare tutti i ${tool.itemNounPlural} per ottenere l'interpretazione."
+            !score.isComplete && tool.hasBands -> "Punteggio parziale: completare tutti i ${tool.itemNounPlural} per ottenere l'interpretazione."
+            !score.isComplete -> "Punteggio parziale: finora ${score.percent}% di risposte corrette.$skippedText".trim()
+            !tool.hasBands -> "${score.total} risposte corrette su ${score.max}.$skippedText".trim()
             else -> ""
         }
+        if (!tool.hasBands) labelPaint.color = PdfPalette.ink
         val highlights = highlightsOf(tool, answers)
         val headline = tool.headlineItem
         val explanation = if (headline != null && headline.isComputed) tool.computedExplanation(headline, answers) else null
@@ -425,10 +436,27 @@ class AssessmentPdfExporter(private val context: Context) {
                 canvas.drawLayout(layoutText(description, descPaint, textWidth, lineSpacing = 1.15f), x + padding, baseline + 6f + labelLayout.height + 4f)
             }
 
-            // Colonna destra: barra interpretativa.
+            // Colonna destra: barra interpretativa (o barra di avanzamento per gli strumenti senza fasce).
             val barLeft = x + leftWidth + padding
             val barRight = x + width - padding
             val barTop = y + barTopOffset
+            if (!tool.hasBands) {
+                canvas.drawRoundRect(barLeft, barTop, barRight, barTop + barHeight, 5f, fillPaint(PdfPalette.mauveSoft))
+                val filled = barLeft + (barRight - barLeft) * score.fraction.coerceIn(0f, 1f)
+                if (filled > barLeft) canvas.drawRoundRect(barLeft, barTop, filled, barTop + barHeight, 5f, fillPaint(PdfPalette.mauveDeep))
+                val edgePaint = textPaint(6.5f, PdfPalette.muted)
+                canvas.drawText("0", barLeft, barTop + barHeight + 9f, edgePaint)
+                canvas.drawText("${score.max}", barRight, barTop + barHeight + 9f, textPaint(6.5f, PdfPalette.muted, align = Paint.Align.RIGHT))
+                canvas.drawText(
+                    "${score.percent}%", (barLeft + barRight) / 2f, barTop + barHeight + 9f,
+                    textPaint(6.5f, PdfPalette.ink, PdfFonts.bold, align = Paint.Align.CENTER),
+                )
+                canvas.drawTextFitted(
+                    "Risposte corrette (${tool.shortName}, su ${score.max})",
+                    barLeft, y + padding + 6f, barRight - barLeft, kickerPaint,
+                )
+                return@DrawBlock
+            }
             val bands = tool.bands
             val span = (tool.maxScore - tool.minScore + 1).toFloat()
             val weights = bands.map { max((it.max - it.min + 1).toFloat() / span, 0.085f) }
@@ -539,6 +567,7 @@ class AssessmentPdfExporter(private val context: Context) {
         selection: Selection?,
         note: String?,
         explanation: String?,
+        failedSubtasks: List<String>,
         zebra: Boolean,
         header: PdfBlock,
         emphasised: Boolean,
@@ -564,11 +593,22 @@ class AssessmentPdfExporter(private val context: Context) {
             computed -> "Calcolato automaticamente"
             else -> null
         }
-        val levelTitle = selection?.option?.title ?: if (computed) "In attesa dei valori" else "Non valutato"
-        val description = selection?.option?.description
-            ?: if (computed) "Il valore viene calcolato quando tutte le voci di origine sono compilate." else "Nessun livello selezionato."
-        val noteText = note?.trim()?.takeIf { it.isNotEmpty() }?.let { "Osservazioni: $it" }
+        val levelTitle = selection?.option?.title ?: when {
+            computed -> "In attesa dei valori"
+            item.optional -> "Non somministrata (facoltativa)"
+            else -> "Non valutato"
+        }
+        val description = selection?.option?.description?.takeIf { it.isNotBlank() }
+            ?: when {
+                selection != null -> ""
+                computed -> "Il valore viene calcolato quando tutte le voci di origine sono compilate."
+                item.optional -> ""
+                shownItem.isCount -> "Nessun conteggio registrato."
+                else -> "Nessun livello selezionato."
+            }
+        val noteText = note?.trim()?.takeIf { it.isNotEmpty() }?.let { "${shownItem.noteLabel ?: "Osservazioni"}: $it" }
         val calcText = explanation?.let { "Calcolo: ${it.replaceFirstChar(Char::uppercase)}" }
+        val failedText = failedSubtasks.takeIf { it.isNotEmpty() }?.let { "Non riuscite: ${it.joinToString("; ")}" }
         val maxScore = shownItem.maxScore
 
         fun heights(width: Float): Triple<Float, Float, Float> {
@@ -576,8 +616,9 @@ class AssessmentPdfExporter(private val context: Context) {
             val midW = width * colLevel - 16f
             val leftH = layoutText(title, titlePaint, leftW, lineSpacing = 1.15f).height +
                 (subtitle?.let { layoutText(it, subPaint, leftW, lineSpacing = 1.15f).height + 2 } ?: 0)
-            val midH = layoutText(levelTitle, levelPaint, midW, lineSpacing = 1.15f).height + 2 +
-                layoutText(description, descPaint, midW, lineSpacing = 1.18f).height +
+            val midH = layoutText(levelTitle, levelPaint, midW, lineSpacing = 1.15f).height +
+                (if (description.isBlank()) 0 else layoutText(description, descPaint, midW, lineSpacing = 1.18f).height + 2) +
+                (failedText?.let { layoutText(it, descPaint, midW, lineSpacing = 1.18f).height + 3 } ?: 0) +
                 (calcText?.let { layoutText(it, calcPaint, midW, lineSpacing = 1.18f).height + 3 } ?: 0) +
                 (noteText?.let { layoutText(it, notePaint, midW, lineSpacing = 1.18f).height + 4 } ?: 0)
             val rightH = if (emphasised) 30f else 22f
@@ -610,9 +651,17 @@ class AssessmentPdfExporter(private val context: Context) {
             val midX = x + width * colActivity + 8f
             val levelLayout = layoutText(levelTitle, if (selection == null) missingPaint else levelPaint, midW, lineSpacing = 1.15f)
             canvas.drawLayout(levelLayout, midX, top)
-            val descLayout = layoutText(description, descPaint, midW, lineSpacing = 1.18f)
-            canvas.drawLayout(descLayout, midX, top + levelLayout.height + 2f)
-            var cursor = top + levelLayout.height + 2f + descLayout.height
+            var cursor = top + levelLayout.height
+            if (description.isNotBlank()) {
+                val descLayout = layoutText(description, descPaint, midW, lineSpacing = 1.18f)
+                canvas.drawLayout(descLayout, midX, cursor + 2f)
+                cursor += descLayout.height + 2f
+            }
+            if (failedText != null) {
+                val failedLayout = layoutText(failedText, descPaint, midW, lineSpacing = 1.18f)
+                canvas.drawLayout(failedLayout, midX, cursor + 3f)
+                cursor += failedLayout.height + 3f
+            }
             if (calcText != null) {
                 val calcLayout = layoutText(calcText, calcPaint, midW, lineSpacing = 1.18f)
                 canvas.drawLayout(calcLayout, midX, cursor + 3f)
@@ -649,10 +698,11 @@ class AssessmentPdfExporter(private val context: Context) {
             val label = textPaint(9.5f, PdfPalette.ink, PdfFonts.bold)
             val baseline = centredBaseline(label, y, y + h)
             canvas.drawText("Totale", x + 8f, baseline, label)
+            val skipped = if (score.skipped > 0) " · ${score.skipped} facoltative non somministrate" else ""
             val status = if (score.isComplete) {
-                "valutazione completa"
+                (if (tool.hasBands) "valutazione completa" else "valutazione completa · ${score.percent}% di risposte corrette") + skipped
             } else {
-                "valutazione parziale: ${score.answered} ${tool.itemNounPlural} su ${score.required}"
+                "valutazione parziale: ${score.answered} ${tool.itemNounPlural} su ${score.required}$skipped"
             }
             canvas.drawTextFitted(status, x + width * colActivity + 8f, baseline, width * (1f - colActivity) - 70f, textPaint(8f, PdfPalette.graphite))
             canvas.drawText("${score.total} / ${score.max}", x + width - 8f, baseline, textPaint(11f, PdfPalette.ink, PdfFonts.black, align = Paint.Align.RIGHT))

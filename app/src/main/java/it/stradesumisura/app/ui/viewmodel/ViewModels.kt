@@ -307,6 +307,51 @@ class AssessmentFormViewModel(container: AppContainer, handle: SavedStateHandle)
         current.copy(answers = current.answers.copy(itemNotes = current.answers.itemNotes + (itemId to value)), dirty = true)
     }
 
+    /** Item a conteggio senza sotto-prove: imposta il numero di risposte corrette (null = non valutato). */
+    fun setCount(itemId: String, count: Int?) {
+        val item = _state.value.tool?.item(itemId) ?: return
+        val max = item.countMax ?: return
+        _state.update { current ->
+            val items = current.answers.items.toMutableMap()
+            if (count == null) items.remove(itemId) else items[itemId] = count.coerceIn(0, max)
+            current.copy(answers = current.answers.copy(items = items), dirty = true)
+        }
+    }
+
+    /**
+     * Segna una sotto-prova come riuscita (true), non riuscita (false) o da valutare (null).
+     * L'item risulta compilato, con punteggio pari alle sotto-prove riuscite, solo quando sono tutte segnate.
+     */
+    fun setSubtask(itemId: String, index: Int, correct: Boolean?) {
+        val item = _state.value.tool?.item(itemId) ?: return
+        if (!item.hasSubtasks) return
+        _state.update { current ->
+            val results = current.answers.subtaskResults[itemId].orEmpty().toMutableMap()
+            if (correct == null) results.remove(index) else results[index] = correct
+            val items = current.answers.items.toMutableMap()
+            if (results.size == item.subtasks.size) {
+                items[itemId] = results.values.count { it }
+            } else {
+                items.remove(itemId)
+            }
+            current.copy(
+                answers = current.answers.copy(items = items, subtaskResults = current.answers.subtaskResults + (itemId to results)),
+                dirty = true,
+            )
+        }
+    }
+
+    /** Azzera un item a conteggio (sotto-prove comprese): torna «non valutato». */
+    fun clearItem(itemId: String) = _state.update { current ->
+        current.copy(
+            answers = current.answers.copy(
+                items = current.answers.items - itemId,
+                subtaskResults = current.answers.subtaskResults - itemId,
+            ),
+            dirty = true,
+        )
+    }
+
     fun select(itemId: String, optionIndex: Int) {
         val tool = _state.value.tool ?: return
         val item = tool.item(itemId) ?: return

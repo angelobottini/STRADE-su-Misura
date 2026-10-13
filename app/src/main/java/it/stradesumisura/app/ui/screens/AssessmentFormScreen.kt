@@ -21,18 +21,24 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -45,6 +51,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -186,16 +194,20 @@ fun AssessmentFormScreen(
                     val useAlternative = alternative != null && state.usesAlternative(item.id)
                     val shown = if (useAlternative && alternative != null) alternative else item
                     ItemCard(
-                        number = index + 1,
+                        number = tool.numberOf(item) ?: "${index + 1}",
                         item = item,
                         alternative = alternative,
                         shown = shown,
                         selection = tool.selectionFor(item, state.answers),
                         useAlternative = useAlternative,
                         note = state.answers.itemNotes[shown.id],
+                        subtaskResults = state.answers.subtaskResults[shown.id].orEmpty(),
                         onSelect = viewModel::select,
                         onToggleAlternative = { viewModel.setUseAlternative(item.id, it) },
                         onNoteChange = { viewModel.setItemNote(shown.id, it) },
+                        onSetCount = { viewModel.setCount(shown.id, it) },
+                        onSetSubtask = { subtaskIndex, correct -> viewModel.setSubtask(shown.id, subtaskIndex, correct) },
+                        onClear = { viewModel.clearItem(shown.id) },
                     )
                 }
                 item {
@@ -279,10 +291,17 @@ private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?, answers: Ass
             )
             Spacer(Modifier.height(12.dp))
             val band = score?.band
-            if (band != null) {
-                BandChip(band)
-            } else {
-                Text(
+            when {
+                band != null -> BandChip(band)
+                !tool.hasBands && score != null -> Text(
+                    buildString {
+                        append(if (score.answered == 0) "Nessuna prova valutata." else "${score.percent}% di risposte corrette finora.")
+                        if (score.skipped > 0) append(" ${score.skipped} ${if (score.skipped == 1) "prova facoltativa non valutata" else "prove facoltative non valutate"}.")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+                else -> Text(
                     "Completa tutte le voci per ottenere l'interpretazione del punteggio.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -313,16 +332,20 @@ private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?, answers: Ass
 
 @Composable
 private fun ItemCard(
-    number: Int,
+    number: String,
     item: ToolItem,
     alternative: ToolItem?,
     shown: ToolItem,
     selection: Selection?,
     useAlternative: Boolean,
     note: String?,
+    subtaskResults: Map<Int, Boolean>,
     onSelect: (itemId: String, optionIndex: Int) -> Unit,
     onToggleAlternative: (Boolean) -> Unit,
     onNoteChange: (String) -> Unit,
+    onSetCount: (Int?) -> Unit,
+    onSetSubtask: (index: Int, correct: Boolean?) -> Unit,
+    onClear: () -> Unit,
 ) {
     var showDefinition by rememberSaveable(shown.id) { mutableStateOf(false) }
     Card(
@@ -345,14 +368,21 @@ private fun ItemCard(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        "$number",
-                        style = MaterialTheme.typography.labelLarge,
+                        number,
+                        style = if (number.length > 2) MaterialTheme.typography.labelMedium else MaterialTheme.typography.labelLarge,
                         color = if (selection != null) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
                     )
                 }
                 Spacer(Modifier.width(12.dp))
                 Column(Modifier.weight(1f)) {
                     Text(shown.title, style = MaterialTheme.typography.titleMedium)
+                    if (shown.optional) {
+                        Text(
+                            "Facoltativa: si può lasciare non valutata",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary,
+                        )
+                    }
                     shown.hint?.let {
                         Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -406,10 +436,23 @@ private fun ItemCard(
                 }
             }
             Spacer(Modifier.height(12.dp))
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                shown.options.forEachIndexed { index, option ->
-                    val selected = selection != null && selection.item.id == shown.id && selection.optionIndex == index
-                    OptionRow(option = option, selected = selected, onClick = { onSelect(shown.id, index) })
+            when {
+                shown.hasSubtasks -> SubtaskChecklist(
+                    item = shown,
+                    results = subtaskResults,
+                    onSetSubtask = onSetSubtask,
+                    onClear = onClear,
+                )
+                shown.isCount -> CountInput(
+                    item = shown,
+                    value = selection?.option?.score,
+                    onSetCount = onSetCount,
+                )
+                else -> Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    shown.options.forEachIndexed { index, option ->
+                        val selected = selection != null && selection.item.id == shown.id && selection.optionIndex == index
+                        OptionRow(option = option, selected = selected, onClick = { onSelect(shown.id, index) })
+                    }
                 }
             }
             val noteLabel = shown.noteLabel
@@ -423,6 +466,166 @@ private fun ItemCard(
                     keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+        }
+    }
+}
+
+/**
+ * Elenco delle sotto-prove di un item a conteggio: per ciascuna l'operatore segna riuscita (✓) o
+ * non riuscita (✗). Il conteggio e lo stato di compilazione si aggiornano da soli.
+ */
+@Composable
+private fun SubtaskChecklist(
+    item: ToolItem,
+    results: Map<Int, Boolean>,
+    onSetSubtask: (index: Int, correct: Boolean?) -> Unit,
+    onClear: () -> Unit,
+) {
+    val correct = results.values.count { it }
+    val marked = results.size
+    val pending = item.subtasks.size - marked
+    Column {
+        Surface(
+            shape = MaterialTheme.shapes.small,
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Row(
+                Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    buildString {
+                        append("Riuscite: $correct su ${item.subtasks.size}")
+                        if (pending > 0) append(" · $pending da valutare") else append(" · prova completata")
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                if (marked > 0) {
+                    TextButton(onClick = onClear, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)) {
+                        Text("Azzera")
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(6.dp))
+        item.subtasks.forEachIndexed { index, text ->
+            val state = results[index]
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    "${index + 1}.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.width(26.dp),
+                )
+                Text(
+                    text,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (state == null) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.weight(1f),
+                )
+                Spacer(Modifier.width(8.dp))
+                MarkButton(
+                    icon = Icons.Default.Check,
+                    description = "Riuscita",
+                    selected = state == true,
+                    activeColor = MaterialTheme.colorScheme.primary,
+                    onClick = { onSetSubtask(index, if (state == true) null else true) },
+                )
+                Spacer(Modifier.width(6.dp))
+                MarkButton(
+                    icon = Icons.Default.Close,
+                    description = "Non riuscita",
+                    selected = state == false,
+                    activeColor = MaterialTheme.colorScheme.error,
+                    onClick = { onSetSubtask(index, if (state == false) null else false) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkButton(
+    icon: ImageVector,
+    description: String,
+    selected: Boolean,
+    activeColor: Color,
+    onClick: () -> Unit,
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = if (selected) activeColor else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (selected) activeColor else MaterialTheme.colorScheme.outlineVariant),
+        modifier = Modifier.size(38.dp),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                icon,
+                contentDescription = description,
+                tint = if (selected) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+    }
+}
+
+/** Conteggio delle risposte corrette per gli item senza elenco di sotto-prove: cursore e pulsanti −/+. */
+@Composable
+private fun CountInput(item: ToolItem, value: Int?, onSetCount: (Int?) -> Unit) {
+    val max = item.countMax ?: return
+    Column {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            OutlinedButton(
+                onClick = { onSetCount(((value ?: 0) - 1).coerceAtLeast(0)) },
+                enabled = value != null && value > 0,
+                contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.size(44.dp),
+            ) { Text("−", style = MaterialTheme.typography.titleMedium) }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .padding(horizontal = 12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    if (value == null) "—" else "$value",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = if (value == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    if (value == null) "non valutata · ${item.countUnit} su $max" else "${item.countUnit} su $max",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Button(
+                onClick = { onSetCount(((value ?: -1) + 1).coerceAtMost(max)) },
+                enabled = value == null || value < max,
+                contentPadding = PaddingValues(0.dp),
+                modifier = Modifier.size(44.dp),
+            ) { Text("+", style = MaterialTheme.typography.titleMedium) }
+        }
+        Slider(
+            value = (value ?: 0).toFloat(),
+            onValueChange = { onSetCount(it.toInt()) },
+            valueRange = 0f..max.toFloat(),
+            steps = (max - 1).coerceAtLeast(0),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (value != null) {
+            TextButton(onClick = { onSetCount(null) }, contentPadding = PaddingValues(horizontal = 0.dp, vertical = 0.dp)) {
+                Text("Segna come non valutata")
             }
         }
     }
@@ -487,8 +690,9 @@ private fun SaveBar(tool: ToolDefinition, score: ScoreResult?, isEdit: Boolean, 
                 val missing = score.required - score.answered
                 val noun = if (missing == 1) tool.itemNounSingular else tool.itemNounPlural
                 val verb = if (missing == 1) "Manca" else "Mancano"
+                val optionalNote = if (score.skipped > 0) " Le prove facoltative non valutate non contano." else ""
                 Text(
-                    "$verb $missing $noun: la valutazione verrà salvata come parziale.",
+                    "$verb $missing $noun: la valutazione verrà salvata come parziale.$optionalNote",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

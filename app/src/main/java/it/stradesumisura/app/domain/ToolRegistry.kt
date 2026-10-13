@@ -2,6 +2,7 @@ package it.stradesumisura.app.domain
 
 import it.stradesumisura.app.domain.tools.AdlObservation
 import it.stradesumisura.app.domain.tools.BarthelModifiedIndex
+import it.stradesumisura.app.domain.tools.FunctionalMonetarySkills
 import it.stradesumisura.app.domain.tools.PerformanceQualityRatingScale
 
 /**
@@ -14,6 +15,7 @@ object ToolRegistry {
         BarthelModifiedIndex.definition,
         AdlObservation.definition,
         PerformanceQualityRatingScale.definition,
+        FunctionalMonetarySkills.definition,
     )
 
     fun byId(id: String): ToolDefinition? = tools.firstOrNull { it.id == id }

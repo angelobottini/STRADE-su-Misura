@@ -28,6 +28,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -202,14 +203,14 @@ fun AssessmentDetailScreen(
                 itemsIndexed(tool.primaryItems, key = { _, item -> item.id }) { _, item ->
                     val selection = tool.selectionFor(item, state.answers)
                     val noteKey = selection?.item?.id ?: item.id
-                    val number = tool.answerableItems.indexOf(item).takeIf { it >= 0 }?.let { "${it + 1}" } ?: "="
                     DetailRow(
-                        number = number,
+                        number = tool.numberOf(item) ?: "=",
                         item = item,
                         selection = selection,
                         note = state.answers.itemNotes[noteKey] ?: state.answers.itemNotes[item.id],
                         highlighted = item.id in tool.highlightedItemIds,
                         explanation = if (item.isComputed) tool.computedExplanation(item, state.answers) else null,
+                        failedSubtasks = tool.failedSubtasks(item, state.answers),
                     )
                 }
                 val notes = data.assessment.notes
@@ -266,14 +267,25 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult, answers: Ass
                 )
             }
             Spacer(Modifier.height(6.dp))
-            if (band != null) {
-                BandChip(band)
-                Spacer(Modifier.height(10.dp))
-                Text(band.description, style = MaterialTheme.typography.bodyMedium)
+            val skippedText = if (score.skipped > 0) {
+                " ${score.skipped} ${if (score.skipped == 1) "prova facoltativa non somministrata" else "prove facoltative non somministrate"}."
             } else {
-                Text(
+                ""
+            }
+            when {
+                band != null -> {
+                    BandChip(band)
+                    Spacer(Modifier.height(10.dp))
+                    Text(band.description, style = MaterialTheme.typography.bodyMedium)
+                }
+                !tool.hasBands && score.isComplete -> Text(
+                    "${score.percent}% di risposte corrette (${score.total} su ${score.max}).$skippedText",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                else -> Text(
                     "Valutazione parziale: ${score.answered} ${tool.itemNounPlural} su ${score.required}. " +
-                        "Completa la valutazione per ottenere l'interpretazione.",
+                        (if (tool.hasBands) "Completa la valutazione per ottenere l'interpretazione." else "Finora ${score.percent}% di risposte corrette.") +
+                        skippedText,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.error,
                 )
@@ -283,19 +295,32 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult, answers: Ass
                 ScoreHighlights(tool = tool, answers = answers, score = score)
             }
             Spacer(Modifier.height(18.dp))
-            ScoreBar(bands = tool.bands, minScore = tool.minScore, maxScore = tool.maxScore, score = score.total.takeIf { score.isComplete })
-            Spacer(Modifier.height(4.dp))
-            Row(Modifier.fillMaxWidth()) {
-                val weights = bandWeights(tool.bands, tool.minScore, tool.maxScore)
-                tool.bands.forEachIndexed { index, b ->
-                    Text(
-                        b.rangeLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        modifier = Modifier.weight(weights[index]),
-                    )
+            if (tool.hasBands) {
+                ScoreBar(bands = tool.bands, minScore = tool.minScore, maxScore = tool.maxScore, score = score.total.takeIf { score.isComplete })
+                Spacer(Modifier.height(4.dp))
+                Row(Modifier.fillMaxWidth()) {
+                    val weights = bandWeights(tool.bands, tool.minScore, tool.maxScore)
+                    tool.bands.forEachIndexed { index, b ->
+                        Text(
+                            b.rangeLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                            modifier = Modifier.weight(weights[index]),
+                        )
+                    }
+                }
+            } else {
+                LinearProgressIndicator(
+                    progress = { score.fraction },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Spacer(Modifier.height(4.dp))
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("0", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${score.percent}%", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text("${score.max}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
@@ -359,6 +384,7 @@ private fun DetailRow(
     note: String?,
     highlighted: Boolean = false,
     explanation: String? = null,
+    failedSubtasks: List<String> = emptyList(),
 ) {
     val shown = selection?.item ?: item
     val borderColor = when {
@@ -405,10 +431,22 @@ private fun DetailRow(
                 }
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    selection?.option?.title ?: if (item.isComputed) "In attesa dei valori" else "Non valutato",
+                    selection?.option?.title ?: when {
+                        item.isComputed -> "In attesa dei valori"
+                        item.optional -> "Non somministrata (facoltativa)"
+                        else -> "Non valutata"
+                    },
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (selection == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 )
+                if (failedSubtasks.isNotEmpty()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "Non riuscite: ${failedSubtasks.joinToString("; ")}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 if (explanation != null) {
                     Spacer(Modifier.height(2.dp))
                     Text(
