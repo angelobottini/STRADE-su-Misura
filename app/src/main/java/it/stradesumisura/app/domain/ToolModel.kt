@@ -17,8 +17,13 @@ data class ToolOption(
 
 /** Regola di calcolo automatico del punteggio di un item a partire da altri item. */
 sealed interface ComputedScore {
+    val itemIds: List<String>
+
     /** Il punteggio è il massimo (cioè il peggiore) tra quelli degli item indicati. */
-    data class MaxOf(val itemIds: List<String>) : ComputedScore
+    data class MaxOf(override val itemIds: List<String>) : ComputedScore
+
+    /** Il punteggio è la media aritmetica degli item indicati, arrotondata per difetto. */
+    data class FloorMeanOf(override val itemIds: List<String>) : ComputedScore
 }
 
 data class ToolItem(
@@ -35,9 +40,16 @@ data class ToolItem(
     val noteLabel: String? = null,
     /** Se valorizzato, l'item non viene compilato ma calcolato automaticamente. */
     val computed: ComputedScore? = null,
+    /** Titolo breve per chip e riquadri compatti (es. "Qualità" per "Qualità di performance o del prodotto"). */
+    val shortTitle: String? = null,
 ) {
+    val compactTitle: String get() = shortTitle ?: title
     val maxScore: Int get() = options.maxOf { it.score }
+    val minScore: Int get() = options.minOf { it.score }
     val isComputed: Boolean get() = computed != null
+
+    /** Intervallo dei punteggi dell'item, es. "0–3" oppure "1–10". */
+    val scoreRangeLabel: String get() = "$minScore–$maxScore"
 }
 
 /** Campo di testo raccolto prima degli item (es. compito osservato, diagnosi). */
@@ -120,6 +132,11 @@ data class ToolDefinition(
     val notesHint: String? = null,
     /** Campo il cui valore riassume la valutazione negli elenchi (es. il compito osservato). */
     val summaryFieldId: String? = null,
+    /**
+     * Item da evidenziare accanto al punteggio principale (es. i due valori inseriti dal valutatore
+     * da cui viene calcolato il punteggio). Vuoto per gli strumenti che non lo prevedono.
+     */
+    val highlightedItemIds: List<String> = emptyList(),
 ) {
     /** Item mostrati nei riepiloghi (le alternative si raggiungono dal loro item principale). */
     val primaryItems: List<ToolItem> = items.filter { it.alternativeOf == null }
@@ -134,6 +151,15 @@ data class ToolDefinition(
 
     val maxScore: Int = headlineItem?.maxScore ?: answerableItems.sumOf { it.maxScore }
 
+    /** Punteggio più basso ottenibile (0 per la maggior parte delle scale, 1 per la PQRS). */
+    val minScore: Int = headlineItem?.minScore ?: answerableItems.sumOf { it.minScore }
+
+    /** Intervallo del punteggio principale, es. "0–100" oppure "1–10". */
+    val scoreRangeLabel: String get() = "$minScore–$maxScore"
+
+    /** Item evidenziati accanto al punteggio principale, nell'ordine dichiarato. */
+    val highlightedItems: List<ToolItem> = highlightedItemIds.mapNotNull { id -> items.firstOrNull { it.id == id } }
+
     fun item(id: String): ToolItem? = items.firstOrNull { it.id == id }
 
     fun field(id: String): ToolField? = fields.firstOrNull { it.id == id }
@@ -142,14 +168,43 @@ data class ToolDefinition(
 
     fun bandFor(total: Int): ScoreBand? = bands.firstOrNull { it.contains(total) }
 
+    /** Punteggi degli item di origine di una regola, oppure null se manca anche uno solo di essi. */
+    private fun sourceScores(rule: ComputedScore, answers: Map<String, Int>): List<Int>? {
+        val scores = rule.itemIds.map { id -> item(id)?.let { source -> selectionFor(source, answers)?.option?.score } }
+        return if (scores.isEmpty() || scores.any { it == null }) null else scores.filterNotNull()
+    }
+
     /** Valore di un item calcolato, oppure null se manca anche uno solo degli item di origine. */
-    fun computedValue(item: ToolItem, answers: Map<String, Int>): Int? = when (val rule = item.computed) {
-        null -> null
-        is ComputedScore.MaxOf -> {
-            val scores = rule.itemIds.map { id -> item(id)?.let { source -> selectionFor(source, answers)?.option?.score } }
-            if (scores.any { it == null }) null else scores.filterNotNull().maxOrNull()
+    fun computedValue(item: ToolItem, answers: Map<String, Int>): Int? {
+        val rule = item.computed ?: return null
+        val scores = sourceScores(rule, answers) ?: return null
+        return when (rule) {
+            is ComputedScore.MaxOf -> scores.max()
+            // Divisione intera: per punteggi non negativi coincide con l'arrotondamento per difetto.
+            is ComputedScore.FloorMeanOf -> scores.sum() / scores.size
         }
     }
+
+    /**
+     * Spiegazione leggibile del calcolo di un item calcolato, es. "(6 + 7) ÷ 2 = 6,5 → 6",
+     * oppure null se il valore non è ancora calcolabile.
+     */
+    fun computedExplanation(item: ToolItem, answers: Map<String, Int>): String? {
+        val rule = item.computed ?: return null
+        val scores = sourceScores(rule, answers) ?: return null
+        val value = computedValue(item, answers) ?: return null
+        return when (rule) {
+            is ComputedScore.MaxOf -> "livello più alto tra ${scores.joinToString(", ")} → $value"
+            is ComputedScore.FloorMeanOf -> {
+                val sum = scores.sum()
+                val exact = if (sum % scores.size == 0) "$value" else "%.1f".format(java.util.Locale.ITALIAN, sum.toDouble() / scores.size)
+                val rounding = if (sum % scores.size == 0) "" else ", arrotondata per difetto → $value"
+                "media (${scores.joinToString(" + ")}) ÷ ${scores.size} = $exact$rounding"
+            }
+        }
+    }
+
+    fun computedExplanation(item: ToolItem, answers: AssessmentAnswers): String? = computedExplanation(item, answers.items)
 
     /**
      * Risolve la selezione di un item principale: per gli item calcolati l'opzione con il punteggio

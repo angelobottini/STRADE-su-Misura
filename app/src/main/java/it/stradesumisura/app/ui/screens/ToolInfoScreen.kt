@@ -89,7 +89,7 @@ fun ToolInfoScreen(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             InfoPill(tool.duration)
                             InfoPill("${tool.answerableItems.size} ${tool.itemNounPlural}")
-                            InfoPill("${tool.totalLabel} 0–${tool.maxScore}")
+                            InfoPill("${tool.totalLabel} ${tool.scoreRangeLabel}")
                         }
                     }
                 }
@@ -124,6 +124,18 @@ fun ToolInfoScreen(
                         }
                     }
                 }
+                if (tool.highlightedItems.isNotEmpty() && tool.headlineItem?.isComputed == true) {
+                    item {
+                        InfoSection("Calcolo del punteggio") {
+                            Text(
+                                "Il valutatore inserisce ${tool.highlightedItems.joinToString(" e ") { it.compactTitle.lowercase() }}; " +
+                                    "il ${(tool.headlineItem?.title ?: tool.totalLabel).replaceFirstChar(Char::lowercase)} è " +
+                                    (tool.headlineItem?.hint?.replaceFirstChar(Char::lowercase) ?: "calcolato automaticamente."),
+                                style = MaterialTheme.typography.bodyMedium,
+                            )
+                        }
+                    }
+                }
                 item {
                     InfoSection(tool.itemsSectionTitle) {
                         tool.primaryItems.forEach { item ->
@@ -140,7 +152,7 @@ fun ToolInfoScreen(
                                     modifier = Modifier.weight(1f),
                                 )
                                 Text(
-                                    "0–${item.maxScore}",
+                                    item.scoreRangeLabel,
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -155,7 +167,7 @@ fun ToolInfoScreen(
                             }
                             tool.alternativeFor(item.id)?.let { alternative ->
                                 Text(
-                                    "In alternativa: ${alternative.title} (0–${alternative.maxScore})",
+                                    "In alternativa: ${alternative.title} (${alternative.scoreRangeLabel})",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.padding(start = 20.dp, bottom = 4.dp),

@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import it.stradesumisura.app.R
+import it.stradesumisura.app.domain.AssessmentAnswers
 import it.stradesumisura.app.domain.ScoreBand
 import it.stradesumisura.app.domain.ScoreResult
 import it.stradesumisura.app.domain.Selection
@@ -66,6 +67,7 @@ import it.stradesumisura.app.ui.components.BandChip
 import it.stradesumisura.app.ui.components.ConfirmDialog
 import it.stradesumisura.app.ui.components.EmptyState
 import it.stradesumisura.app.ui.components.LabeledValue
+import it.stradesumisura.app.ui.components.ScoreHighlights
 import it.stradesumisura.app.ui.components.SectionHeader
 import it.stradesumisura.app.ui.components.StradeTopBar
 import it.stradesumisura.app.ui.viewmodel.AppViewModelFactory
@@ -158,7 +160,7 @@ fun AssessmentDetailScreen(
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                item { ScoreHeroCard(tool = tool, score = score) }
+                item { ScoreHeroCard(tool = tool, score = score, answers = state.answers) }
                 item {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -175,7 +177,7 @@ fun AssessmentDetailScreen(
                                 LabeledValue("Valutatore", data.assessment.evaluator?.takeIf { it.isNotBlank() } ?: "—", Modifier.weight(1f))
                                 LabeledValue("Contesto", data.assessment.setting?.takeIf { it.isNotBlank() } ?: "—", Modifier.weight(1f))
                             }
-                            tool.fields.chunked(2).forEach { pair ->
+                            tool.fields.filter { !it.multiline }.chunked(2).forEach { pair ->
                                 Row {
                                     pair.forEach { field ->
                                         LabeledValue(
@@ -190,6 +192,12 @@ fun AssessmentDetailScreen(
                         }
                     }
                 }
+                tool.fields.filter { it.multiline }.forEach { field ->
+                    val value = state.answers.fields[field.id]?.trim()
+                    if (!value.isNullOrEmpty()) {
+                        item(key = "field_${field.id}") { NotesCard(title = field.label, text = value) }
+                    }
+                }
                 item { SectionHeader(tool.itemsSectionTitle) }
                 itemsIndexed(tool.primaryItems, key = { _, item -> item.id }) { _, item ->
                     val selection = tool.selectionFor(item, state.answers)
@@ -200,6 +208,8 @@ fun AssessmentDetailScreen(
                         item = item,
                         selection = selection,
                         note = state.answers.itemNotes[noteKey] ?: state.answers.itemNotes[item.id],
+                        highlighted = item.id in tool.highlightedItemIds,
+                        explanation = if (item.isComputed) tool.computedExplanation(item, state.answers) else null,
                     )
                 }
                 val notes = data.assessment.notes
@@ -232,8 +242,9 @@ fun AssessmentDetailScreen(
 }
 
 @Composable
-private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult) {
+private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult, answers: AssessmentAnswers) {
     val band = score.band
+    val totalText = if (score.isComplete || tool.sumsItems) "${score.total}" else "—"
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -246,7 +257,7 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult) {
                 color = MaterialTheme.colorScheme.secondary,
             )
             Row(verticalAlignment = Alignment.Bottom) {
-                Text("${score.total}", style = MaterialTheme.typography.displayMedium)
+                Text(totalText, style = MaterialTheme.typography.displayMedium)
                 Text(
                     " / ${score.max}",
                     style = MaterialTheme.typography.titleLarge,
@@ -267,11 +278,15 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult) {
                     color = MaterialTheme.colorScheme.error,
                 )
             }
+            if (tool.highlightedItems.isNotEmpty()) {
+                Spacer(Modifier.height(16.dp))
+                ScoreHighlights(tool = tool, answers = answers, score = score)
+            }
             Spacer(Modifier.height(18.dp))
-            ScoreBar(bands = tool.bands, maxScore = tool.maxScore, score = score.total.takeIf { score.isComplete })
+            ScoreBar(bands = tool.bands, minScore = tool.minScore, maxScore = tool.maxScore, score = score.total.takeIf { score.isComplete })
             Spacer(Modifier.height(4.dp))
             Row(Modifier.fillMaxWidth()) {
-                val weights = bandWeights(tool.bands, tool.maxScore)
+                val weights = bandWeights(tool.bands, tool.minScore, tool.maxScore)
                 tool.bands.forEachIndexed { index, b ->
                     Text(
                         b.rangeLabel,
@@ -287,14 +302,14 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult) {
     }
 }
 
-private fun bandWeights(bands: List<ScoreBand>, maxScore: Int): List<Float> =
-    bands.map { max((it.max - it.min + 1).toFloat() / (maxScore + 1).toFloat(), 0.085f) }
+private fun bandWeights(bands: List<ScoreBand>, minScore: Int, maxScore: Int): List<Float> =
+    bands.map { max((it.max - it.min + 1).toFloat() / (maxScore - minScore + 1).toFloat(), 0.085f) }
 
 /** Barra interpretativa orizzontale con l'indicatore del punteggio corrente. */
 @Composable
-fun ScoreBar(bands: List<ScoreBand>, maxScore: Int, score: Int?, modifier: Modifier = Modifier) {
+fun ScoreBar(bands: List<ScoreBand>, minScore: Int, maxScore: Int, score: Int?, modifier: Modifier = Modifier) {
     val markerColor = MaterialTheme.colorScheme.onSurface
-    val weights = bandWeights(bands, maxScore)
+    val weights = bandWeights(bands, minScore, maxScore)
     val totalWeight = weights.sum()
     Canvas(
         modifier
@@ -337,12 +352,24 @@ fun ScoreBar(bands: List<ScoreBand>, maxScore: Int, score: Int?, modifier: Modif
 }
 
 @Composable
-private fun DetailRow(number: String, item: ToolItem, selection: Selection?, note: String?) {
+private fun DetailRow(
+    number: String,
+    item: ToolItem,
+    selection: Selection?,
+    note: String?,
+    highlighted: Boolean = false,
+    explanation: String? = null,
+) {
     val shown = selection?.item ?: item
+    val borderColor = when {
+        item.isComputed -> MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f)
+        highlighted -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
     Surface(
         shape = MaterialTheme.shapes.medium,
         color = if (item.isComputed) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, if (item.isComputed) MaterialTheme.colorScheme.secondary.copy(alpha = 0.4f) else MaterialTheme.colorScheme.outlineVariant),
+        border = BorderStroke(if (highlighted) 1.5.dp else 1.dp, borderColor),
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(Modifier.padding(14.dp), verticalAlignment = Alignment.Top) {
@@ -378,10 +405,18 @@ private fun DetailRow(number: String, item: ToolItem, selection: Selection?, not
                 }
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    selection?.option?.title ?: "Non valutato",
+                    selection?.option?.title ?: if (item.isComputed) "In attesa dei valori" else "Non valutato",
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (selection == null) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                 )
+                if (explanation != null) {
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        "Calcolo: ${explanation.replaceFirstChar(Char::uppercase)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                }
                 val trimmedNote = note?.trim()
                 if (!trimmedNote.isNullOrEmpty()) {
                     Spacer(Modifier.height(4.dp))
@@ -395,11 +430,23 @@ private fun DetailRow(number: String, item: ToolItem, selection: Selection?, not
             }
             Spacer(Modifier.width(12.dp))
             Column(horizontalAlignment = Alignment.End) {
-                Text(
-                    selection?.option?.score?.toString() ?: "—",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
+                val scoreText = selection?.option?.score?.toString() ?: "—"
+                if ((highlighted || item.isComputed) && selection != null) {
+                    Surface(
+                        shape = MaterialTheme.shapes.small,
+                        color = if (item.isComputed) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.primaryContainer,
+                    ) {
+                        Text(
+                            scoreText,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Black,
+                            color = if (item.isComputed) MaterialTheme.colorScheme.surface else MaterialTheme.colorScheme.onPrimaryContainer,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 2.dp),
+                        )
+                    }
+                } else {
+                    Text(scoreText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                }
                 Text(
                     "su ${shown.maxScore}",
                     style = MaterialTheme.typography.labelSmall,

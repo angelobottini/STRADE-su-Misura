@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
+import android.text.TextUtils
 
 /**
  * Small layout kit on top of android.graphics for building paginated A4 reports with
@@ -115,6 +116,15 @@ fun layoutText(
     .setLineSpacing(0f, lineSpacing)
     .setIncludePad(false)
     .build()
+
+/** Accorcia [text] con i puntini di sospensione in modo che stia in [width] punti con [paint]. */
+fun ellipsize(text: String, paint: TextPaint, width: Float): String =
+    if (width <= 0f) "" else TextUtils.ellipsize(text, paint, width, TextUtils.TruncateAt.END).toString()
+
+/** Disegna una sola riga di testo accorciandola se supera [maxWidth]. */
+fun Canvas.drawTextFitted(text: String, x: Float, y: Float, maxWidth: Float, paint: TextPaint) {
+    drawText(ellipsize(text, paint, maxWidth), x, y, paint)
+}
 
 fun Canvas.drawLayout(layout: StaticLayout, x: Float, y: Float) {
     save()

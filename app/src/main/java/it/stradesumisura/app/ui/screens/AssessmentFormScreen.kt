@@ -50,6 +50,7 @@ import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import it.stradesumisura.app.domain.AssessmentAnswers
 import it.stradesumisura.app.domain.ScoreResult
 import it.stradesumisura.app.domain.Selection
 import it.stradesumisura.app.domain.ToolDefinition
@@ -59,6 +60,7 @@ import it.stradesumisura.app.ui.components.BandChip
 import it.stradesumisura.app.ui.components.ConfirmDialog
 import it.stradesumisura.app.ui.components.DateField
 import it.stradesumisura.app.ui.components.EmptyState
+import it.stradesumisura.app.ui.components.ScoreHighlights
 import it.stradesumisura.app.ui.components.StradeTopBar
 import it.stradesumisura.app.ui.viewmodel.AppViewModelFactory
 import it.stradesumisura.app.ui.viewmodel.AssessmentFormViewModel
@@ -127,7 +129,7 @@ fun AssessmentFormScreen(
                 contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                item { ProgressCard(tool, score) }
+                item { ProgressCard(tool, score, state.answers) }
                 item {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
@@ -226,7 +228,8 @@ fun AssessmentFormScreen(
 }
 
 @Composable
-private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?) {
+private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?, answers: AssessmentAnswers) {
+    val totalText = if (score != null && (score.isComplete || tool.sumsItems)) "${score.total}" else "—"
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -241,7 +244,7 @@ private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?) {
                     )
                     Row(verticalAlignment = Alignment.Bottom) {
                         Text(
-                            "${score?.total ?: 0}",
+                            totalText,
                             style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
@@ -285,14 +288,24 @@ private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?) {
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
-            val computedHint = tool.headlineItem?.takeIf { it.isComputed }?.hint
-            if (computedHint != null) {
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    computedHint,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+            if (tool.highlightedItems.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                ScoreHighlights(
+                    tool = tool,
+                    answers = answers,
+                    score = score,
+                    labelColor = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
+            } else {
+                val computedHint = tool.headlineItem?.takeIf { it.isComputed }?.hint
+                if (computedHint != null) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        computedHint,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
             }
         }
     }
