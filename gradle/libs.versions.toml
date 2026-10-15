@@ -15,6 +15,7 @@ room = "2.7.2"
 sqlite = "2.5.2"
 coroutines = "1.10.2"
 pdfbox = "3.0.5"
+orgJson = "20250517"
 jna = "5.17.0"
 
 [libraries]
@@ -44,6 +45,8 @@ kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-
 # Solo Windows: report PDF, anteprima e stampa; barra del titolo nativa
 pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+# Su Android org.json fa parte del sistema; su Windows serve la libreria.
+org-json = { module = "org.json:json", version.ref = "orgJson" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

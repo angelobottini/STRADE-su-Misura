@@ -50,6 +50,7 @@ kotlin {
                 implementation(libs.androidx.sqlite.bundled)
                 implementation(libs.kotlinx.coroutines.swing)
                 implementation(libs.pdfbox)
+                implementation(libs.org.json)
             }
         }
     }

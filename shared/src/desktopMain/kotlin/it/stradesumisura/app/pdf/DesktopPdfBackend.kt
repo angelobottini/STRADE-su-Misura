@@ -109,8 +109,9 @@ internal class FontFace(val name: String, val bytes: ByteArray) {
     val descender: Float = font.horizontalHeader.descender / unitsPerEm
 
     /** La licenza del carattere ne consente l'incorporazione nei documenti (campo fsType di OS/2). */
-    val embeddable: Boolean = (font.getOS2Windows()?.fsType ?: 0).let { fsType ->
-        fsType and FS_TYPE_RESTRICTED != FS_TYPE_RESTRICTED && fsType and FS_TYPE_BITMAP_ONLY == 0
+    val embeddable: Boolean = run {
+        val fsType = font.getOS2Windows()?.fsType?.toInt() ?: 0
+        (fsType and FS_TYPE_RESTRICTED) != FS_TYPE_RESTRICTED && (fsType and FS_TYPE_BITMAP_ONLY) == 0
     }
 
     @Synchronized

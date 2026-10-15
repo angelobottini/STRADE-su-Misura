@@ -1,7 +1,8 @@
 # STRADE su Misura
 
-App Android per terapisti occupazionali: strumenti e scale di valutazione compilabili, archiviate
-in locale e condivisibili come report PDF professionali.
+App per terapisti occupazionali, per **Android** e **Windows 11** (versione portatile, senza
+installazione): strumenti e scale di valutazione compilabili, archiviate in locale e condivisibili
+come report PDF professionali.
 
 L'identità visiva riprende il marchio STRADE: le due strade che si incrociano (banda nera e banda
 diagonale color malva `#C7ADBF`), tipografia geometrica e un'interfaccia pulita in bianco e nero.
@@ -56,23 +57,56 @@ diagonale color malva `#C7ADBF`), tipografia geometrica e un'interfaccia pulita 
   punteggio con barra interpretativa, tabella delle attività con il livello rilevato, osservazioni,
   legenda, riferimento bibliografico, spazio per la firma e numerazione delle pagine. Il report
   viene impaginato in una sola pagina quando possibile (tre livelli di densità) e i testi vengono
-  mandati a capo o accorciati per restare nei loro riquadri. Anteprima in app, condivisione o
-  salvataggio sul dispositivo.
+  mandati a capo o accorciati per restare nei loro riquadri. Anteprima in app; su Android
+  condivisione o salvataggio sul dispositivo, su Windows «Salva PDF…», apertura nel lettore PDF
+  predefinito e stampa diretta.
 - **Impostazioni** – profilo del valutatore (nome, qualifica, struttura, luogo) usato nei report.
 - **Privacy** – tutti i dati restano sul dispositivo (database Room locale); nessun server.
+
+## Versione per Windows 11
+
+La versione Windows usa lo stesso codice dell'app Android (scale, punteggi, archivio e report PDF)
+con un'interfaccia adattata allo schermo del computer: pannello di navigazione laterale, contenuti
+centrati, schede degli strumenti su due colonne, barre di scorrimento e barra del titolo nei colori
+dell'app (chiara o scura come Windows).
+
+- **Portatile, senza installazione** – si scarica lo ZIP
+  `STRADE-su-Misura-<versione>-Windows-portatile.zip` dalla pagina **Releases**, lo si estrae
+  dove si preferisce (anche su una chiavetta USB) e si avvia `STRADE su Misura.exe`. Java è
+  incluso. Al primo avvio SmartScreen può chiedere conferma («Ulteriori informazioni» →
+  «Esegui comunque») perché l'eseguibile non ha una firma digitale commerciale.
+- **Dati** – archivio, impostazioni e dimensioni della finestra sono nella cartella `Dati` accanto
+  al programma (se non è scrivibile, in `%LOCALAPPDATA%\STRADE su Misura`). Per una copia di
+  sicurezza o per cambiare computer basta copiare la cartella del programma. I PDF generati per
+  l'anteprima sono in `Dati/Temporanei` e vengono eliminati a ogni avvio.
+- **Report PDF** – stesso impaginato della versione Android, generato con Apache PDFBox con i
+  caratteri Roboto incorporati; anteprima nell'app, «Salva PDF…» con la finestra di Windows,
+  «Apri» nel lettore predefinito e «Stampa…» con la finestra di stampa di sistema.
+- **Sicurezza dei dati** – una sola finestra alla volta sullo stesso archivio; chiudendo il
+  programma con una valutazione non salvata viene chiesta conferma; gli errori imprevisti sono
+  annotati in `Dati/registro-errori.txt`.
 
 ## Tecnologie
 
 | Componente | Scelta |
 |---|---|
-| Linguaggio | Kotlin 2.2 |
-| Interfaccia | Jetpack Compose + Material 3, tema chiaro/scuro |
-| Persistenza | Room (SQLite) |
+| Linguaggio | Kotlin 2.2 (Kotlin Multiplatform: Android + JVM desktop) |
+| Interfaccia | Compose Multiplatform + Material 3, tema chiaro/scuro |
+| Persistenza | Room (SQLite; su Windows con il driver SQLite incluso) |
 | Navigazione | Navigation Compose |
-| PDF | `android.graphics.pdf.PdfDocument` con motore di impaginazione interno (`pdf/PdfKit.kt`); testo in Roboto statico incluso negli asset (Apache 2.0), per evitare i glifi Type3 generati dai font variabili di sistema |
+| PDF | motore di impaginazione comune (`pdf/PdfKit.kt`, `pdf/AssessmentPdfExporter.kt`) disegnato con `android.graphics.pdf.PdfDocument` su Android e Apache PDFBox su Windows; testo in Roboto statico incluso nelle risorse (Apache 2.0), per evitare i glifi Type3 generati dai font variabili di sistema |
+| Pacchetto Windows | Compose Desktop `createDistributable` (jpackage, Java 17 ridotto incluso), distribuito come ZIP portatile |
 | Build | Gradle 8.13, Android Gradle Plugin 8.11, JDK 17, `minSdk 26`, `targetSdk 35` |
 
-Struttura principale del codice (`app/src/main/java/it/stradesumisura/app`):
+Moduli:
+
+```
+shared/   codice comune (commonMain) e parti specifiche di Android (androidMain) e Windows (desktopMain)
+app/      app Android: Application, Activity, manifest, icone
+desktop/  app Windows: finestra, cartella dei dati portatile, icona e pacchetto
+```
+
+Struttura del codice comune (`shared/src/commonMain/kotlin/it/stradesumisura/app`):
 
 ```
 data/        entità Room, DAO, repository, impostazioni
@@ -85,14 +119,18 @@ ui/          tema, componenti, schermate, ViewModel e navigazione
 ## Compilazione
 
 Il progetto si compila su GitHub Actions (`.github/workflows/android.yml`) a ogni push su `main`:
-il workflow produce l'APK di release firmato e l'APK di debug come artefatti del run.
-Creando un tag `vX.Y.Z` viene pubblicata automaticamente una **Release** con l'APK allegato.
+il workflow produce l'APK di release firmato, l'APK di debug (Ubuntu) e lo ZIP portatile per
+Windows (runner Windows) come artefatti del run. Creando un tag `vX.Y.Z` viene pubblicata
+automaticamente una **Release** con l'APK e lo ZIP per Windows allegati.
 
 In locale (con Android Studio o JDK 17 + Android SDK):
 
 ```bash
-./gradlew assembleDebug
+./gradlew :app:assembleDebug
 ```
+
+La versione Windows (su Windows, con JDK 17) si avvia con `./gradlew :desktop:run` e si
+impacchetta con `./gradlew :desktop:createDistributable`.
 
 ### Firma delle release
 
@@ -116,7 +154,7 @@ git). Senza chiave, la build di release viene firmata con la chiave di debug.
 
 ## Aggiungere un nuovo strumento
 
-1. Creare un oggetto in `domain/tools/` che espone una `ToolDefinition` (nome, descrizione,
+1. Creare un oggetto in `shared/.../domain/tools/` che espone una `ToolDefinition` (nome, descrizione,
    istruzioni, riferimento, item con opzioni e punteggi, fasce interpretative). Gli item possono
    dichiarare `alternativeOf` per le alternative mutuamente esclusive oppure `computed` per i
    punteggi calcolati da altri item (`ComputedScore.MaxOf`, `ComputedScore.FloorMeanOf`);
@@ -131,7 +169,8 @@ git). Senza chiave, la build di release viene firmata con la chiave di debug.
 2. Registrarlo in `ToolRegistry.tools`.
 
 Compilazione, salvataggio, punteggio, schermate e PDF funzionano automaticamente per ogni
-strumento registrato.
+strumento registrato, sia su Android sia su Windows. Le immagini delle opzioni vanno in
+`shared/src/commonMain/composeResources/drawable/` e si indicano con `Res.drawable.<nome>`.
 
 ## Licenza
 
