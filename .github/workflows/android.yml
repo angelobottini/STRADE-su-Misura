@@ -1,4 +1,4 @@
-name: Android CI
+name: Build
 
 on:
   push:
@@ -12,12 +12,12 @@ permissions:
   contents: write
 
 concurrency:
-  group: android-${{ github.ref }}
+  group: build-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build APK
+  android:
+    name: Android APK
     runs-on: ubuntu-latest
     env:
       HAS_KEYSTORE: ${{ secrets.STRADE_KEYSTORE_BASE64 != '' }}
@@ -65,7 +65,7 @@ jobs:
           ./gradlew --no-daemon --stacktrace \
             -Pstrade.versionCode=${{ steps.version.outputs.code }} \
             -Pstrade.versionName=${{ steps.version.outputs.name }} \
-            assembleRelease assembleDebug
+            :app:assembleRelease :app:assembleDebug
 
       - name: Collect APKs
         run: |
@@ -92,12 +92,81 @@ jobs:
           name: STRADE-su-Misura-debug
           path: dist/*-debug.apk
 
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+  windows:
+    name: Windows portatile
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compute version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "name=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=1.0.0-build.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build portable application
+        run: |
+          ./gradlew --no-daemon --stacktrace \
+            -Pstrade.versionName=${{ steps.version.outputs.name }} \
+            :desktop:createDistributable
+
+      - name: Package portable ZIP
+        shell: pwsh
+        run: |
+          $app = "desktop/build/compose/binaries/main/app/STRADE su Misura"
+          Get-ChildItem $app
+          Get-Content -Encoding utf8 desktop/src/main/packaging/LEGGIMI.txt | Set-Content -Encoding utf8BOM "$app/LEGGIMI.txt"
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path $app -DestinationPath "dist/STRADE-su-Misura-${{ steps.version.outputs.name }}-Windows-portatile.zip"
+          Get-ChildItem dist
+
+      - name: Upload portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: STRADE-su-Misura-Windows-portatile
+          path: dist/*.zip
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [ android, windows ]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Compute version
+        id: version
+        run: echo "name=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download build outputs
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Publish release
         uses: softprops/action-gh-release@v2
         with:
           name: STRADE su Misura ${{ steps.version.outputs.name }}
           files: |
             dist/STRADE-su-Misura-${{ steps.version.outputs.name }}.apk
+            dist/STRADE-su-Misura-${{ steps.version.outputs.name }}-Windows-portatile.zip
             dist/mapping-*.txt
           generate_release_notes: true

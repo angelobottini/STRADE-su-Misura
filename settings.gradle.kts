@@ -21,4 +21,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "STRADE su Misura"
-include(":app")
+include(":app", ":shared", ":desktop")

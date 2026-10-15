@@ -1,0 +1,37 @@
+STRADE su Misura - versione portatile per Windows 11 (e Windows 10)
+====================================================================
+
+Strumenti e scale di valutazione per terapisti occupazionali.
+
+
+AVVIO (nessuna installazione)
+-----------------------------
+1. Estrai tutto il contenuto dello ZIP in una cartella a tua scelta: il Desktop,
+   Documenti oppure una chiavetta USB.
+2. Apri la cartella "STRADE su Misura" e fai doppio clic su "STRADE su Misura.exe".
+
+Java e tutte le librerie necessarie sono già inclusi: non serve installare nulla
+e non servono permessi di amministratore.
+
+Al primo avvio Windows può mostrare l'avviso "Windows ha protetto il PC"
+(SmartScreen), perché il programma non ha una firma digitale commerciale:
+scegli "Ulteriori informazioni" e poi "Esegui comunque".
+
+
+DATI
+----
+- Persone, valutazioni e impostazioni vengono salvate nella cartella "Dati",
+  accanto al programma. Nessuna informazione viene inviata in rete.
+- Copia di sicurezza o passaggio a un altro computer: chiudi il programma e
+  copia l'intera cartella "STRADE su Misura".
+- Aggiornamento a una nuova versione: estrai la nuova versione e copia al suo
+  interno la cartella "Dati" della versione precedente.
+- Se la cartella del programma non è scrivibile (ad esempio dentro "Programmi"),
+  i dati vengono salvati in %LOCALAPPDATA%\STRADE su Misura.
+  Il percorso esatto è indicato in Impostazioni > Dati del programma.
+
+
+REPORT PDF
+----------
+Apri una valutazione e scegli "Report PDF": vedrai l'anteprima del report e
+potrai salvarlo con nome, aprirlo nel lettore PDF predefinito o stamparlo.
