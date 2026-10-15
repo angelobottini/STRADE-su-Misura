@@ -127,6 +127,17 @@ jobs:
             -Pstrade.versionName=${{ steps.version.outputs.name }} \
             :desktop:createDistributable
 
+      - name: Generate sample PDF reports
+        run: ./gradlew --no-daemon :shared:desktopTest
+
+      - name: Upload sample PDF reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: report-di-prova-windows
+          path: shared/build/report-di-prova/*.pdf
+          if-no-files-found: warn
+
       - name: Package portable ZIP
         shell: pwsh
         run: |

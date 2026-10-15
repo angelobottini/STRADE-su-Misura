@@ -29,6 +29,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.VerticalDivider
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +52,7 @@ import androidx.navigation.navArgument
 import androidx.savedstate.read
 import it.stradesumisura.app.AppContainer
 import it.stradesumisura.app.AppTexts
+import it.stradesumisura.app.ui.components.LocalNavigationPaneVisible
 import it.stradesumisura.app.ui.components.StradeMark
 import it.stradesumisura.app.ui.screens.AssessmentDetailScreen
 import it.stradesumisura.app.ui.screens.AssessmentFormScreen
@@ -167,13 +169,15 @@ fun StradeNavigation() {
                         .fillMaxHeight(),
                     contentAlignment = Alignment.TopCenter,
                 ) {
-                    StradeNavHost(
-                        navController = navController,
-                        navigateTopLevel = ::navigateTopLevel,
-                        modifier = Modifier
-                            .widthIn(max = if (wide) WideContentMaxWidth else Dp.Unspecified)
-                            .fillMaxSize(),
-                    )
+                    CompositionLocalProvider(LocalNavigationPaneVisible provides wide) {
+                        StradeNavHost(
+                            navController = navController,
+                            navigateTopLevel = ::navigateTopLevel,
+                            modifier = Modifier
+                                .widthIn(max = if (wide) WideContentMaxWidth else Dp.Unspecified)
+                                .fillMaxSize(),
+                        )
+                    }
                 }
             }
         }

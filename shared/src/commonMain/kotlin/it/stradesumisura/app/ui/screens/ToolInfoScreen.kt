@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +40,7 @@ import it.stradesumisura.app.ui.components.SectionLabel
 import it.stradesumisura.app.ui.components.StradeLazyColumn
 import it.stradesumisura.app.ui.components.StradeTopBar
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ToolInfoScreen(
     toolId: String,
@@ -88,7 +91,10 @@ fun ToolInfoScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Spacer(Modifier.height(12.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FlowRow(
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
                             InfoPill(tool.duration)
                             InfoPill(tool.itemsCountText)
                             InfoPill("${tool.totalLabel} ${tool.scoreRangeLabel}")

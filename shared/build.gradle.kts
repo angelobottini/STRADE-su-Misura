@@ -53,6 +53,11 @@ kotlin {
                 implementation(libs.org.json)
             }
         }
+        val desktopTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+            }
+        }
     }
 }
 

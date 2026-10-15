@@ -5,6 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -95,6 +97,7 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier, onClic
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ToolCard(
     tool: ToolDefinition,
@@ -129,7 +132,10 @@ fun ToolCard(
             Spacer(Modifier.height(10.dp))
             Text(tool.subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurface)
             Spacer(Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 InfoPill(tool.duration)
                 InfoPill(tool.itemsCountText)
                 InfoPill("${tool.totalLabel} ${tool.scoreRangeLabel}")

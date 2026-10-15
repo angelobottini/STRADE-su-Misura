@@ -32,6 +32,7 @@ import it.stradesumisura.app.AppTexts
 import it.stradesumisura.app.domain.ToolRegistry
 import it.stradesumisura.app.ui.components.AssessmentListItem
 import it.stradesumisura.app.ui.components.EmptyState
+import it.stradesumisura.app.ui.components.LocalNavigationPaneVisible
 import it.stradesumisura.app.ui.components.SectionHeader
 import it.stradesumisura.app.ui.components.StatCard
 import it.stradesumisura.app.ui.components.StradeLazyColumn
@@ -68,17 +69,23 @@ fun HomeScreen(
             ) {
                 item {
                     Column {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.Top,
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                        ) {
-                            StradeMark(height = 76.dp)
-                            IconButton(onClick = onOpenSettings) {
-                                Icon(Icons.Default.Settings, contentDescription = "Impostazioni")
+                        if (LocalNavigationPaneVisible.current) {
+                            // Marchio e impostazioni sono già nel pannello laterale.
+                            Text("Panoramica", style = MaterialTheme.typography.headlineMedium)
+                            Spacer(Modifier.height(4.dp))
+                        } else {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                StradeMark(height = 76.dp)
+                                IconButton(onClick = onOpenSettings) {
+                                    Icon(Icons.Default.Settings, contentDescription = "Impostazioni")
+                                }
                             }
+                            Spacer(Modifier.height(10.dp))
                         }
-                        Spacer(Modifier.height(10.dp))
                         Text(
                             AppTexts.TAGLINE,
                             style = MaterialTheme.typography.bodyMedium,
