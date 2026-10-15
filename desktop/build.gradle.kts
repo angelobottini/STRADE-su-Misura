@@ -74,6 +74,7 @@ compose.desktop {
             copyright = "© 2026 STRADE su Misura"
 
             // Moduli Java inclusi nel runtime ridotto distribuito con il programma.
+            // jdk.localedata serve per date e mesi in italiano (senza, Java usa l'inglese).
             modules(
                 "java.desktop",
                 "java.logging",
@@ -84,6 +85,7 @@ compose.desktop {
                 "jdk.unsupported",
                 "jdk.accessibility",
                 "jdk.crypto.ec",
+                "jdk.localedata",
                 "jdk.zipfs",
             )
 
