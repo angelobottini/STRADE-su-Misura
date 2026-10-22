@@ -121,10 +121,12 @@ object RegionalAssessment {
         val c = counts(scores)
         val (_, criterion) = classify(c)
         val result = if (value == CLASS_NONE) "nessuna classe" else "classe ${bands.firstOrNull { it.contains(value) }?.code ?: value}"
-        return "scheda A: ${c.complete} categorie con difficoltà completa, ${c.severe} almeno severa, " +
-            "${c.medium} almeno media, ${c.mild} almeno lieve; scheda B: ${c.section1} voci con punteggio 3 " +
-            "nella sezione 1 e ${c.section2} nella sezione 2 → $result ($criterion)"
+        return "scheda A: ${categories(c.complete)} con difficoltà completa, ${c.severe} almeno severa, " +
+            "${c.medium} almeno media, ${c.mild} almeno lieve; scheda B: ${if (c.section1 == 1) "1 voce" else "${c.section1} voci"} " +
+            "con punteggio 3 nella sezione 1 e ${c.section2} nella sezione 2 → $result ($criterion)"
     }
+
+    private fun categories(n: Int): String = if (n == 1) "1 categoria" else "$n categorie"
 
     private fun functional(id: String, code: String, title: String, section: String? = null, hint: String? = null) =
         ToolItem(id = id, title = "$code $title", options = icfOptions, hint = hint, section = section)
