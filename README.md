@@ -50,10 +50,19 @@ diagonale color malva `#C7ADBF`), tipografia geometrica e un'interfaccia pulita 
     applicano» sommano i punteggi senza scendere sotto 0. Punteggio di ogni trasferimento in
     percentuale del massimo applicabile; il secondo trasferimento è facoltativo e, se compilato,
     il totale è la media delle due percentuali.
+  - **Scheda di valutazione regionale** (persone con disabilità, accesso ai servizi diurni e
+    residenziali): dati della persona e del servizio (codice fiscale, comune di residenza, servizio
+    in cui è già inserita), scheda A con otto categorie ICF valutate con il qualificatore di
+    capacità da 0 a 4, scheda B con i problemi fisici e di comportamento di particolare gravità
+    (1 = no, 2 = sì senza interventi speciali, 3 = sì con interventi speciali; le voci «Altro» sono
+    facoltative, con nota) e sintesi C: la classe da A (problemi di particolare gravità) a E
+    (disabilità lieve) è calcolata con i criteri generali di identificazione della scheda e
+    mostrata come lettera nell'app e nel report, con il criterio che l'ha determinata.
 - **Compilazione guidata** – livelli descritti per esteso, punteggio e completamento aggiornati in
   tempo reale, gestione dell'alternativa deambulazione/carrozzina, data, valutatore, contesto e
   osservazioni. Le valutazioni incomplete si salvano come parziali.
-- **Report PDF** – documento A4 con intestazione STRADE, dati della persona e della valutazione,
+- **Report PDF** – documento A4 con il logo STRADE (Autonomia, Cittadinanza, Occupabilità)
+  nell'intestazione, dati della persona e della valutazione,
   punteggio con barra interpretativa, tabella delle attività con il livello rilevato, osservazioni,
   legenda, riferimento bibliografico, spazio per la firma e numerazione delle pagine. Il report
   viene impaginato in una sola pagina quando possibile (tre livelli di densità) e i testi vengono
@@ -111,7 +120,7 @@ Struttura del codice comune (`shared/src/commonMain/kotlin/it/stradesumisura/app
 ```
 data/        entità Room, DAO, repository, impostazioni
 domain/      modello generico degli strumenti (ToolDefinition) e registro degli strumenti
-domain/tools/ definizione delle singole scale (BarthelModifiedIndex.kt, AdlObservation.kt, PerformanceQualityRatingScale.kt, FunctionalMonetarySkills.kt, FunctionalIndependenceMeasure.kt, TransferAssessmentInstrument.kt)
+domain/tools/ definizione delle singole scale (BarthelModifiedIndex.kt, AdlObservation.kt, PerformanceQualityRatingScale.kt, FunctionalMonetarySkills.kt, FunctionalIndependenceMeasure.kt, TransferAssessmentInstrument.kt, RegionalAssessment.kt)
 pdf/         impaginazione e generazione dei report
 ui/          tema, componenti, schermate, ViewModel e navigazione
 ```
@@ -165,12 +174,19 @@ git). Senza chiave, la build di release viene firmata con la chiave di debug.
    punteggio in percentuale se tutti gli item sono a conteggio, altrimenti come somma dei livelli.
    Un item può dichiarare `decisionTree` (`DecisionNode.yesNo`, `choice`, `level`, `LowerOf`):
    il modulo propone allora la guida con le domande e salva il percorso scelto. `groups` divide
-   gli item in aree con subtotale (es. motoria e cognitiva nella FIM).
+   gli item in aree con subtotale (es. motoria e cognitiva nella FIM). `ComputedScore.Rule` calcola un
+   item con una regola propria dello strumento (es. la classe della scheda regionale); se tutte le
+   fasce hanno un `code` il punteggio principale è una classe e si mostra il codice (es. «B») al
+   posto del numero, con `scoreRangeText` per l'intervallo (es. «A–E»).
 2. Registrarlo in `ToolRegistry.tools`.
 
 Compilazione, salvataggio, punteggio, schermate e PDF funzionano automaticamente per ogni
 strumento registrato, sia su Android sia su Windows. Le immagini delle opzioni vanno in
 `shared/src/commonMain/composeResources/drawable/` e si indicano con `Res.drawable.<nome>`.
+
+Il logo dei report è `shared/src/commonMain/composeResources/files/strade_logo.png` (scala di grigi,
+ritagliato sul marchio): per cambiarlo basta sostituire il file e aggiornarne le dimensioni in
+`PdfImage.Logo` (`pdf/PdfGraphics.kt`).
 
 ## Licenza
 

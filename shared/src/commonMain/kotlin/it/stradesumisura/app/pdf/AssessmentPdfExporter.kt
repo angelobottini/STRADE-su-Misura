@@ -17,7 +17,7 @@ import kotlin.math.ceil
 import kotlin.math.max
 
 /**
- * Costruisce il report A4 di una valutazione: intestazione con il marchio, schede persona e
+ * Costruisce il report A4 di una valutazione: intestazione con il logo STRADE, schede persona e
  * valutazione, descrizione del compito (se prevista), pannello del punteggio con barra
  * interpretativa e valori inseriti evidenziati, tabella degli item, osservazioni, legenda,
  * riferimento bibliografico, spazio per la firma e piè di pagina numerato.
@@ -123,11 +123,13 @@ class AssessmentPdfExporter(private val backend: PdfBackend) {
     private fun drawHeader(canvas: PdfCanvas, input: Input) {
         val top = PdfPage.MARGIN_TOP
         val right = PdfPage.WIDTH - PdfPage.MARGIN_X
-        val markWidth = drawBrandMark(canvas, PdfPage.MARGIN_X, top, 34f)
-        val textWidth = right - (PdfPage.MARGIN_X + markWidth + 16f)
+        val logo = PdfImage.Logo
+        val logoWidth = PdfPage.LOGO_HEIGHT * logo.width / logo.height
+        canvas.drawImage(logo, PdfPage.MARGIN_X, top, PdfPage.MARGIN_X + logoWidth, top + PdfPage.LOGO_HEIGHT)
+        val textWidth = right - (PdfPage.MARGIN_X + logoWidth + 16f)
 
         val kicker = textPaint(7.5f, PdfPalette.mauveDeep, PdfFont.Bold, letterSpacing = 0.12f, align = PdfAlign.RIGHT)
-        canvas.drawText("REPORT DI VALUTAZIONE", right, top + 10f, kicker)
+        canvas.drawText("REPORT DI VALUTAZIONE", right, top + 14f, kicker)
 
         val profile = input.profile
         val line1 = profile.organization.ifBlank { profile.name }
@@ -136,7 +138,7 @@ class AssessmentPdfExporter(private val backend: PdfBackend) {
         } else {
             profile.qualification.takeIf { profile.name.isNotBlank() } ?: ""
         }
-        var y = top + 24f
+        var y = top + 28f
         if (line1.isNotBlank()) {
             canvas.drawTextFitted(line1, right, y, textWidth, textPaint(9.5f, PdfPalette.ink, PdfFont.Medium, align = PdfAlign.RIGHT))
             y += 12f
@@ -167,31 +169,6 @@ class AssessmentPdfExporter(private val backend: PdfBackend) {
             PdfPage.MARGIN_X, ruleY + 22f, right - PdfPage.MARGIN_X, small,
         )
         canvas.drawText(pageText, right, ruleY + 12f, pagePaint)
-    }
-
-    /** Il marchio STRADE: banda diagonale malva dietro la banda nera con la scritta spaziata. Restituisce la larghezza. */
-    private fun drawBrandMark(canvas: PdfCanvas, x: Float, y: Float, height: Float): Float {
-        val band = height * 0.46f
-        val bandTop = y + height * 0.27f
-        val word = textPaint(band * 0.56f, PdfPalette.white, PdfFont.Black, letterSpacing = 0.22f)
-        val trailing = word.textSize * 0.22f
-        val pad = band * 0.55f
-        val bandWidth = word.measureText("STRADE") - trailing + pad * 2
-
-        val cx = x + bandWidth * 0.40f
-        val cy = bandTop + band / 2f
-        val length = height * 1.0f
-        canvas.save()
-        canvas.rotate(-40f, cx, cy)
-        canvas.drawRect(cx - length / 2f, cy - band / 2f, cx + length / 2f, cy + band / 2f, fillPaint(PdfPalette.mauve))
-        canvas.restore()
-
-        canvas.drawRect(x, bandTop, x + bandWidth, bandTop + band, fillPaint(PdfPalette.ink))
-        canvas.drawText("STRADE", x + pad, centredBaseline(word, bandTop, bandTop + band), word)
-
-        val caption = textPaint(height * 0.19f, PdfPalette.ink, PdfFont.Bold, align = PdfAlign.RIGHT)
-        canvas.drawText("su Misura", x + bandWidth, bandTop + band + height * 0.22f, caption)
-        return bandWidth
     }
 
     // -----------------------------------------------------------------------
@@ -432,10 +409,14 @@ class AssessmentPdfExporter(private val backend: PdfBackend) {
         val showsComputed = headline != null && headline.isComputed
         val totalText = when {
             tool.percentHeadline -> if (score.answered == 0) "—" else "${score.percent}%"
-            score.isComplete || tool.sumsItems -> tool.formatScore(score.total)
+            score.isComplete || tool.sumsItems -> tool.formatHeadline(score.total)
             else -> "—"
         }
-        val maxText = if (tool.percentHeadline) "${tool.formatScore(score.total)} / ${tool.formatScore(score.max)}" else "/ ${tool.formatScore(score.max)}"
+        val maxText = when {
+            tool.showsClass -> ""
+            tool.percentHeadline -> "${tool.formatScore(score.total)} / ${tool.formatScore(score.max)}"
+            else -> "/ ${tool.formatScore(score.max)}"
+        }
 
         val barTopOffset = padding + 30f
         val barHeight = 10f
@@ -546,7 +527,7 @@ class AssessmentPdfExporter(private val backend: PdfBackend) {
                 }
                 canvas.drawPath(marker, fillPaint(PdfPalette.ink))
                 canvas.drawText(
-                    score.total.toString(), mx, barTop - 13f,
+                    tool.formatHeadline(score.total), mx, barTop - 13f,
                     textPaint(8f, PdfPalette.ink, PdfFont.Bold, align = PdfAlign.CENTER),
                 )
             }
@@ -730,8 +711,10 @@ class AssessmentPdfExporter(private val backend: PdfBackend) {
             val scoreText = when {
                 selection == null -> "—"
                 selection.option.notApplicable -> "n.a."
-                else -> tool.formatScore(selection.option.score)
+                else -> tool.formatItemScore(shownItem, selection.option.score)
             }
+            // Per la classe (es. «B») il massimo non ha senso.
+            val maxLabel = if (tool.isClassItem(shownItem)) "" else "su $maxScore"
             if (emphasised && selection != null) {
                 // Riquadro che evidenzia il valore inserito (chiaro) o calcolato (scuro).
                 val boxW = max(scorePaint.measureText(scoreText), 14f) + 14f
@@ -742,10 +725,10 @@ class AssessmentPdfExporter(private val backend: PdfBackend) {
                 if (!computed) canvas.drawRoundRect(right - boxW, boxTop, right, boxTop + boxH, 5f, strokePaint(PdfPalette.mauve, 0.8f))
                 val boxed = textPaint(scorePaint.textSize, if (computed) PdfPalette.white else PdfPalette.ink, PdfFont.Black, align = PdfAlign.RIGHT)
                 canvas.drawText(scoreText, right - 7f, centredBaseline(boxed, boxTop, boxTop + boxH), boxed)
-                canvas.drawText("su $maxScore", right, boxTop + boxH + 9f, maxPaint)
+                canvas.drawText(maxLabel, right, boxTop + boxH + 9f, maxPaint)
             } else {
                 canvas.drawText(scoreText, right, top + 9f, scorePaint)
-                canvas.drawText("su $maxScore", right, top + 19f, maxPaint)
+                canvas.drawText(maxLabel, right, top + 19f, maxPaint)
             }
         }
     }

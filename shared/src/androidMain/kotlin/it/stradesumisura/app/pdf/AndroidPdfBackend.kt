@@ -1,6 +1,8 @@
 package it.stradesumisura.app.pdf
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
@@ -26,6 +28,9 @@ class AndroidPdfBackend(private val context: Context) : PdfBackend {
     @Volatile
     private var typefaces: Map<PdfFont, Typeface> = emptyMap()
 
+    @Volatile
+    private var bitmaps: Map<PdfImage, Bitmap> = emptyMap()
+
     private data class PaintKey(val font: PdfFont, val size: Float, val letterSpacing: Float, val color: Int, val align: PdfAlign)
 
     private val paints = HashMap<PaintKey, TextPaint>()
@@ -34,6 +39,12 @@ class AndroidPdfBackend(private val context: Context) : PdfBackend {
     override suspend fun prepare() {
         mutex.withLock {
             if (typefaces.isNotEmpty()) return
+            // Un'immagine che non si carica non blocca il report: viene semplicemente omessa.
+            bitmaps = PdfImage.entries.mapNotNull { image ->
+                runCatching { Res.readBytes(image.resourcePath) }.getOrNull()
+                    ?.let { bytes -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size) }
+                    ?.let { image to it }
+            }.toMap()
             val dir = File(context.noBackupFilesDir, "pdf-fonts").apply { mkdirs() }
             val loaded = mutableMapOf<String, Typeface>()
             val result = mutableMapOf<PdfFont, Typeface>()
@@ -56,6 +67,8 @@ class AndroidPdfBackend(private val context: Context) : PdfBackend {
         PdfFont.Italic -> Typeface.create("sans-serif", Typeface.ITALIC)
         PdfFont.Light -> Typeface.create("sans-serif-light", Typeface.NORMAL)
     }
+
+    internal fun bitmap(image: PdfImage): Bitmap? = bitmaps[image]
 
     internal fun textPaint(font: PdfFont, size: Float, letterSpacing: Float, color: Int, align: PdfAlign): TextPaint =
         synchronized(paints) {
@@ -137,6 +150,11 @@ private class AndroidPdfCanvas(private val canvas: Canvas, private val backend: 
         canvas.drawPath(androidPath, shapePaint(paint))
     }
 
+    override fun drawImage(image: PdfImage, left: Float, top: Float, right: Float, bottom: Float) {
+        val bitmap = backend.bitmap(image) ?: return
+        canvas.drawBitmap(bitmap, null, RectF(left, top, right, bottom), bitmapPaint)
+    }
+
     override fun save() {
         canvas.save()
     }
@@ -156,6 +174,8 @@ private class AndroidPdfCanvas(private val canvas: Canvas, private val backend: 
     override fun clipRoundRect(left: Float, top: Float, right: Float, bottom: Float, radius: Float) {
         canvas.clipPath(Path().apply { addRoundRect(left, top, right, bottom, radius, radius, Path.Direction.CW) })
     }
+
+    private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
 
     private fun shapePaint(paint: PdfPaint): Paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = if (paint.stroke) Paint.Style.STROKE else Paint.Style.FILL

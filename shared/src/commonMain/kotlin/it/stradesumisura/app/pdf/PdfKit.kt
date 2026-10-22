@@ -8,9 +8,12 @@ object PdfPage {
     const val WIDTH = 595f
     const val HEIGHT = 842f
     const val MARGIN_X = 46f
-    const val MARGIN_TOP = 36f
+    const val MARGIN_TOP = 30f
     const val MARGIN_BOTTOM = 40f
-    const val HEADER_HEIGHT = 62f
+
+    /** Il logo è più alto del vecchio marchio: un po' di margine superiore passa all'intestazione. */
+    const val HEADER_HEIGHT = 72f
+    const val LOGO_HEIGHT = 56f
     const val FOOTER_HEIGHT = 30f
 
     val contentWidth: Float get() = WIDTH - 2 * MARGIN_X

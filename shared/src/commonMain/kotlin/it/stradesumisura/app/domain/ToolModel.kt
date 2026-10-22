@@ -54,6 +54,17 @@ sealed interface ComputedScore {
 
     /** Il punteggio è la media aritmetica degli item indicati, arrotondata per difetto. */
     data class FloorMeanOf(override val itemIds: List<String>) : ComputedScore
+
+    /**
+     * Regola propria dello strumento (es. la classe della scheda regionale). [compute] riceve i
+     * punteggi degli item di [itemIds] compilati (gli item facoltativi possono mancare) e
+     * restituisce il valore, oppure null se mancano dati; [explain] descrive il calcolo del valore.
+     */
+    class Rule(
+        override val itemIds: List<String>,
+        val compute: (Map<String, Int>) -> Int?,
+        val explain: (Map<String, Int>, Int) -> String,
+    ) : ComputedScore
 }
 
 /**
@@ -269,9 +280,11 @@ data class ScoreBand(
     val description: String,
     /** Colore ARGB usato per chip, barre e PDF. */
     val color: Long,
+    /** Codice della classe mostrato al posto del punteggio (es. «B» nella scheda regionale). */
+    val code: String? = null,
 ) {
     fun contains(score: Int): Boolean = score in min..max
-    val rangeLabel: String get() = if (min == max) "$min" else "$min–$max"
+    val rangeLabel: String get() = code ?: if (min == max) "$min" else "$min–$max"
 }
 
 /**
@@ -392,6 +405,8 @@ data class ToolDefinition(
     val scoringNote: String? = null,
     /** Etichetta del numero di item nelle schede (es. «18 voci per trasferimento»), se diversa dal conteggio. */
     val itemsCountLabel: String? = null,
+    /** Intervallo del punteggio principale mostrato al posto di quello calcolato (es. «A–E» per le classi). */
+    val scoreRangeText: String? = null,
 ) {
     /** Item mostrati nei riepiloghi (le alternative si raggiungono dal loro item principale). */
     val primaryItems: List<ToolItem> = items.filter { it.alternativeOf == null }
@@ -428,7 +443,22 @@ data class ToolDefinition(
     fun formatRange(min: Int, max: Int): String = "${formatScore(min)}–${formatScore(max)}"
 
     /** Intervallo dei punteggi di un item, formattato (es. "0–1" oppure "0–2"). */
-    fun rangeLabelOf(item: ToolItem): String = formatRange(item.minScore, item.maxScore)
+    fun rangeLabelOf(item: ToolItem): String = if (isClassItem(item)) scoreRangeLabel else formatRange(item.minScore, item.maxScore)
+
+    /**
+     * True quando il punteggio principale è una classe: ogni fascia ha un codice (es. A–E nella
+     * scheda regionale), mostrato al posto del numero e senza il massimo.
+     */
+    val showsClass: Boolean get() = bands.isNotEmpty() && bands.all { it.code != null }
+
+    /** True per l'item calcolato che determina la classe. */
+    fun isClassItem(item: ToolItem): Boolean = showsClass && item.id == headlineItemId
+
+    /** Punteggio principale da mostrare: il codice della classe oppure il numero. */
+    fun formatHeadline(value: Int): String = if (showsClass) bandFor(value)?.code ?: formatScore(value) else formatScore(value)
+
+    /** Punteggio di un item da mostrare: il codice della classe per l'item che la determina, altrimenti il numero. */
+    fun formatItemScore(item: ToolItem, value: Int): String = if (isClassItem(item)) formatHeadline(value) else formatScore(value)
 
     /** Etichetta del numero di item, es. "18 voci" oppure quella dichiarata dallo strumento. */
     val itemsCountText: String get() = itemsCountLabel ?: "${answerableItems.size} $itemNounPlural"
@@ -466,7 +496,8 @@ data class ToolDefinition(
     }
 
     /** Intervallo del punteggio principale, es. "0–100" oppure "1–10" (in percentuale per gli strumenti letti così). */
-    val scoreRangeLabel: String get() = if (percentHeadline) "0–100%" else formatRange(minScore, maxScore)
+    val scoreRangeLabel: String
+        get() = scoreRangeText ?: if (percentHeadline) "0–100%" else formatRange(minScore, maxScore)
 
     /** Item evidenziati accanto al punteggio principale, nell'ordine dichiarato. */
     val highlightedItems: List<ToolItem> = highlightedItemIds.mapNotNull { id -> items.firstOrNull { it.id == id } }
@@ -485,14 +516,20 @@ data class ToolDefinition(
         return if (scores.isEmpty() || scores.any { it == null }) null else scores.filterNotNull()
     }
 
+    /** Punteggi degli item di origine di una regola che sono stati compilati (itemId -> punteggio). */
+    private fun answeredScores(rule: ComputedScore, answers: Map<String, Int>): Map<String, Int> =
+        rule.itemIds.mapNotNull { id -> item(id)?.let { source -> selectionFor(source, answers)?.option?.score?.let { id to it } } }.toMap()
+
     /** Valore di un item calcolato, oppure null se manca anche uno solo degli item di origine. */
     fun computedValue(item: ToolItem, answers: Map<String, Int>): Int? {
         val rule = item.computed ?: return null
+        if (rule is ComputedScore.Rule) return rule.compute(answeredScores(rule, answers))
         val scores = sourceScores(rule, answers) ?: return null
         return when (rule) {
             is ComputedScore.MaxOf -> scores.max()
             // Divisione intera: per punteggi non negativi coincide con l'arrotondamento per difetto.
             is ComputedScore.FloorMeanOf -> scores.sum() / scores.size
+            is ComputedScore.Rule -> null
         }
     }
 
@@ -502,9 +539,14 @@ data class ToolDefinition(
      */
     fun computedExplanation(item: ToolItem, answers: Map<String, Int>): String? {
         val rule = item.computed ?: return null
+        if (rule is ComputedScore.Rule) {
+            val scores = answeredScores(rule, answers)
+            return rule.compute(scores)?.let { rule.explain(scores, it) }
+        }
         val scores = sourceScores(rule, answers) ?: return null
         val value = computedValue(item, answers) ?: return null
         return when (rule) {
+            is ComputedScore.Rule -> null
             is ComputedScore.MaxOf -> "livello più alto tra ${scores.joinToString(", ")} → $value"
             is ComputedScore.FloorMeanOf -> {
                 val sum = scores.sum()

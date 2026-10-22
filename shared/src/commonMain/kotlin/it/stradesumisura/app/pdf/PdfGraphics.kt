@@ -24,6 +24,12 @@ enum class PdfFont(val resourcePath: String) {
 
 enum class PdfAlign { LEFT, CENTER, RIGHT }
 
+/** Immagini dei report, incluse nelle risorse; [width] e [height] sono le dimensioni in pixel. */
+enum class PdfImage(val resourcePath: String, val width: Int, val height: Int) {
+    /** Il marchio STRADE con «Autonomia, Cittadinanza, Occupabilità», in scala di grigi. */
+    Logo("files/strade_logo.png", 881, 736),
+}
+
 /** Misure del testo fornite dalla piattaforma, in punti. */
 interface PdfTextMetrics {
     /** Larghezza di [text] con il carattere e il corpo indicati; [letterSpacing] è in em. */
@@ -79,6 +85,9 @@ interface PdfCanvas {
     fun drawRoundRect(left: Float, top: Float, right: Float, bottom: Float, radius: Float, paint: PdfPaint)
     fun drawCircle(cx: Float, cy: Float, radius: Float, paint: PdfPaint)
     fun drawPath(path: PdfPath, paint: PdfPaint)
+
+    /** Disegna [image] adattandola al riquadro indicato. */
+    fun drawImage(image: PdfImage, left: Float, top: Float, right: Float, bottom: Float)
     fun save()
     fun restore()
     fun translate(dx: Float, dy: Float)
@@ -97,7 +106,7 @@ interface PdfDocumentWriter {
 
 /** Implementazione della piattaforma. */
 interface PdfBackend {
-    /** Carica i caratteri dei report; va chiamata prima di misurare o disegnare il testo. */
+    /** Carica i caratteri e le immagini dei report; va chiamata prima di misurare o disegnare. */
     suspend fun prepare()
     val metrics: PdfTextMetrics
     fun newDocument(): PdfDocumentWriter

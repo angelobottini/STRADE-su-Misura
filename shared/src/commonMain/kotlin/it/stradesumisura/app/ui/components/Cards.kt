@@ -193,6 +193,7 @@ fun AssessmentListItem(
             Spacer(Modifier.width(8.dp))
             val text = when {
                 tool == null -> "${assessment.totalScore}/${assessment.maxScore}"
+                tool.showsClass -> if (assessment.isComplete) "${tool.totalLabel} ${tool.formatHeadline(assessment.totalScore)}" else "—"
                 tool.percentHeadline -> {
                     val percent = if (assessment.maxScore > 0) (assessment.totalScore * 100f / assessment.maxScore + 0.5f).toInt().coerceIn(0, 100) else 0
                     "$percent%"

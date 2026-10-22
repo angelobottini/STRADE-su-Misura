@@ -218,7 +218,8 @@ fun AssessmentDetailScreen(
                             number = tool.numberOf(toolItem) ?: "=",
                             item = toolItem,
                             selection = selection,
-                            formatScore = tool::formatScore,
+                            formatScore = { tool.formatItemScore(toolItem, it) },
+                            showMax = !tool.isClassItem(toolItem),
                             note = state.answers.itemNotes[noteKey] ?: state.answers.itemNotes[toolItem.id],
                             highlighted = toolItem.id in tool.highlightedItemIds,
                             explanation = if (toolItem.isComputed) tool.computedExplanation(toolItem, state.answers) else null,
@@ -261,13 +262,13 @@ private fun ScoreHeroCard(tool: ToolDefinition, score: ScoreResult, answers: Ass
     val band = score.band
     val totalText = when {
         tool.percentHeadline -> if (score.answered == 0) "—" else "${score.percent}%"
-        score.isComplete || tool.sumsItems -> tool.formatScore(score.total)
+        score.isComplete || tool.sumsItems -> tool.formatHeadline(score.total)
         else -> "—"
     }
-    val maxText = if (tool.percentHeadline) {
-        "  ${tool.formatScore(score.total)} / ${tool.formatScore(score.max)}"
-    } else {
-        " / ${tool.formatScore(score.max)}"
+    val maxText = when {
+        tool.showsClass -> ""
+        tool.percentHeadline -> "  ${tool.formatScore(score.total)} / ${tool.formatScore(score.max)}"
+        else -> " / ${tool.formatScore(score.max)}"
     }
     val notApplicableText = if (score.notApplicable > 0) {
         " ${score.notApplicable} ${if (score.notApplicable == 1) "voce non applicabile esclusa" else "voci non applicabili escluse"} dal massimo."
@@ -427,6 +428,7 @@ private fun DetailRow(
     selection: Selection?,
     formatScore: (Int) -> String,
     note: String?,
+    showMax: Boolean = true,
     highlighted: Boolean = false,
     explanation: String? = null,
     failedSubtasks: List<String> = emptyList(),
@@ -558,11 +560,13 @@ private fun DetailRow(
                 } else {
                     Text(scoreText, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 }
-                Text(
-                    "su ${formatScore(shown.maxScore)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (showMax) {
+                    Text(
+                        "su ${formatScore(shown.maxScore)}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
         }
     }

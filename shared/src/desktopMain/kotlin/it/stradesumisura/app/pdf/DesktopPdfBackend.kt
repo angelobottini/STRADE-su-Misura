@@ -13,6 +13,7 @@ import org.apache.pdfbox.pdmodel.PDPageContentStream
 import org.apache.pdfbox.pdmodel.common.PDRectangle
 import org.apache.pdfbox.pdmodel.font.PDFont
 import org.apache.pdfbox.pdmodel.font.PDType0Font
+import org.apache.pdfbox.pdmodel.graphics.image.PDImageXObject
 import org.apache.pdfbox.util.Matrix
 import org.jetbrains.compose.resources.ExperimentalResourceApi
 import java.io.ByteArrayInputStream
@@ -32,6 +33,9 @@ class DesktopPdfBackend : PdfBackend {
     @Volatile
     private var faces: Map<PdfFont, FontFace> = emptyMap()
 
+    @Volatile
+    private var images: Map<PdfImage, ByteArray> = emptyMap()
+
     /** Caratteri di riserva di Windows, caricati solo se servono. */
     private val fallbacks: List<Lazy<FontFace?>> = listOf("segoeui.ttf", "seguisym.ttf").map { name ->
         lazy {
@@ -45,6 +49,7 @@ class DesktopPdfBackend : PdfBackend {
     override suspend fun prepare() {
         mutex.withLock {
             if (faces.isNotEmpty()) return
+            images = PdfImage.entries.associateWith { Res.readBytes(it.resourcePath) }
             val byPath = mutableMapOf<String, FontFace>()
             faces = PdfFont.entries.associateWith { font ->
                 byPath[font.resourcePath] ?: FontFace(font.name, Res.readBytes(font.resourcePath)).also { byPath[font.resourcePath] = it }
@@ -53,6 +58,8 @@ class DesktopPdfBackend : PdfBackend {
     }
 
     private fun face(font: PdfFont): FontFace = faces[font] ?: error("Caratteri del PDF non caricati")
+
+    internal fun imageBytes(image: PdfImage): ByteArray = images[image] ?: error("Immagini del PDF non caricate")
 
     /** Divide il testo in tratti da disegnare ciascuno con un carattere che ne contiene i glifi. */
     internal fun runs(text: String, font: PdfFont): List<TextRun> {
@@ -138,6 +145,7 @@ internal class FontFace(val name: String, val bytes: ByteArray) {
 private class PdfBoxDocument(private val backend: DesktopPdfBackend) : PdfDocumentWriter {
     private val document = PDDocument()
     private val embedded = HashMap<FontFace, PDFont>()
+    private val images = HashMap<PdfImage, PDImageXObject>()
 
     init {
         document.documentInformation.apply {
@@ -149,6 +157,11 @@ private class PdfBoxDocument(private val backend: DesktopPdfBackend) : PdfDocume
 
     fun pdfFont(face: FontFace): PDFont = embedded.getOrPut(face) {
         PDType0Font.load(document, ByteArrayInputStream(face.bytes), true)
+    }
+
+    /** Ogni immagine viene incorporata una sola volta e riusata su tutte le pagine. */
+    fun pdfImage(image: PdfImage): PDImageXObject = images.getOrPut(image) {
+        PDImageXObject.createFromByteArray(document, backend.imageBytes(image), image.name)
     }
 
     override fun page(width: Float, height: Float, draw: (PdfCanvas) -> Unit) {
@@ -225,6 +238,12 @@ private class PdfBoxCanvas(
         points.drop(1).forEach { (x, y) -> stream.lineTo(x, y) }
         stream.closePath()
         paintShape(paint)
+    }
+
+    override fun drawImage(image: PdfImage, left: Float, top: Float, right: Float, bottom: Float) {
+        // L'immagine occupa il quadrato unitario con l'asse y verso l'alto: la matrice la raddrizza
+        // rispetto all'asse y rovesciato della pagina.
+        stream.drawImage(document.pdfImage(image), Matrix(right - left, 0f, 0f, top - bottom, left, bottom))
     }
 
     override fun save() {

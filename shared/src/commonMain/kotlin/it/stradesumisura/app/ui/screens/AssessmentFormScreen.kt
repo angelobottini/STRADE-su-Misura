@@ -284,7 +284,7 @@ fun AssessmentFormScreen(
 
 @Composable
 private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?, answers: AssessmentAnswers) {
-    val totalText = if (score != null && (score.isComplete || tool.sumsItems)) tool.formatScore(score.total) else "—"
+    val totalText = if (score != null && (score.isComplete || tool.sumsItems)) tool.formatHeadline(score.total) else "—"
     Card(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -304,10 +304,11 @@ private fun ProgressCard(tool: ToolDefinition, score: ScoreResult?, answers: Ass
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
                         )
                         Text(
-                            if (tool.percentHeadline && score != null && score.answered > 0) {
-                                " / ${tool.formatScore(score.max)} · ${score.percent}%"
-                            } else {
-                                " / ${tool.formatScore(score?.max ?: 0)}"
+                            when {
+                                tool.showsClass -> ""
+                                tool.percentHeadline && score != null && score.answered > 0 ->
+                                    " / ${tool.formatScore(score.max)} · ${score.percent}%"
+                                else -> " / ${tool.formatScore(score?.max ?: 0)}"
                             },
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.onSecondaryContainer,
