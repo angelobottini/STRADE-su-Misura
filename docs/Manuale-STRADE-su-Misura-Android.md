@@ -6,15 +6,17 @@ Versione del manuale: 9 novembre 2026 · Angelo Bottini
 
 STRADE su Misura è l'app Android per terapisti occupazionali che permette di compilare scale e strumenti di valutazione, archiviare le valutazioni per persona e produrre report PDF pronti da condividere. Tutto resta sul telefono o sul tablet: non esiste un server e nessun dato viene inviato all'esterno.
 
-Questo manuale descrive la versione Android 1.8.0 (novembre 2026). Le stesse funzioni esistono nella versione portatile per Windows 11, che ha un manuale a parte.
+> **Nota**
+>
+> Questo manuale descrive la versione Android 1.8.0 (novembre 2026). Le stesse funzioni esistono nella versione portatile per Windows 11, che ha un manuale a parte.
 
-**Requisiti**
+### Requisiti
 
 - Telefono o tablet con Android 8.0 (Oreo) o successivo.
 - Circa 40 MB di spazio libero per l'app; le valutazioni occupano pochi kilobyte ciascuna.
 - Nessuna connessione a Internet necessaria, se non per scaricare l'APK.
 
-**Cosa si può fare**
+### Cosa si può fare
 
 | Funzione | In breve |
 | --- | --- |
@@ -28,7 +30,7 @@ Questo manuale descrive la versione Android 1.8.0 (novembre 2026). Le stesse fun
 
 L'app non è sul Play Store: si installa dal file APK pubblicato nella pagina [Releases](https://github.com/angelobottini/STRADE-su-Misura/releases) del progetto su GitHub.
 
-**Prima installazione**
+### Prima installazione
 
 1. Dal telefono aprire la pagina Releases e, nell'ultima versione, toccare il file `STRADE-su-Misura-<versione>.apk` (non lo ZIP, che è la versione Windows).
 2. Al termine del download aprire il file dalla notifica o dall'app File.
@@ -36,13 +38,17 @@ L'app non è sul Play Store: si installa dal file APK pubblicato nella pagina [R
 4. Toccare **Installa**. Se Play Protect mostra un avviso perché l'app non è del Play Store, scegliere **Installa comunque**.
 5. L'icona STRADE su Misura compare nella schermata Home o nel cassetto delle app.
 
-**Aggiornamento**
+### Aggiornamento
 
 - Scaricare l'APK della nuova versione e aprirlo: Android lo installa sopra la versione precedente, conservando persone, valutazioni e impostazioni.
-- L'aggiornamento riesce perché tutte le versioni sono firmate con la stessa chiave. Non disinstallare l'app prima di aggiornare: si perderebbero i dati.
+- L'aggiornamento riesce perché tutte le versioni sono firmate con la stessa chiave.
 - Il numero di versione installato è visibile in **Impostazioni**, sotto il nome dell'app.
 
-**Permessi**
+> **Attenzione**
+>
+> Non disinstallare l'app prima di aggiornare: si perderebbero i dati.
+
+### Permessi
 
 L'app non chiede permessi speciali: non accede a fotocamera, posizione, contatti o rete. La condivisione e il salvataggio dei PDF usano le finestre standard di Android.
 
@@ -57,7 +63,7 @@ La barra in basso ha quattro sezioni: **Panoramica**, **Persone**, **Strumenti**
 | Strumenti | Le schede di tutte le scale disponibili, con **Scheda** (informazioni) e **Nuova valutazione** |
 | Impostazioni | Il profilo del valutatore, la versione installata e le informazioni sulla privacy |
 
-**Prima cosa da fare: il profilo del valutatore**
+### Prima cosa da fare: il profilo del valutatore
 
 1. Aprire **Impostazioni**.
 2. Compilare **Nome e cognome**, **Qualifica** (proposta: Terapista occupazionale), **Struttura o studio** e **Luogo (per la firma)**.
@@ -66,7 +72,7 @@ La barra in basso ha quattro sezioni: **Panoramica**, **Persone**, **Strumenti**
 
 Il nome viene proposto come valutatore in ogni nuova valutazione (resta modificabile caso per caso); struttura, nome e qualifica compaiono nell'intestazione dei report, il luogo accanto alla data nella riga della firma.
 
-**Flusso di lavoro tipico**
+### Flusso di lavoro tipico
 
 1. Creare la persona in **Persone** (una sola volta).
 2. Scegliere lo strumento in **Strumenti** o dalla scheda della persona con **Nuova valutazione**.
@@ -77,7 +83,7 @@ Il nome viene proposto come valutatore in ogni nuova valutazione (resta modifica
 
 Ogni valutazione appartiene a una persona dell'archivio: va quindi creata prima la scheda della persona, una sola volta.
 
-**Creare una persona**
+### Creare una persona
 
 1. In **Persone** toccare **Nuova persona** (oppure, avviando una valutazione, **Nuova persona** nella schermata «Per chi è la valutazione?»).
 2. Compilare **Nome** e **Cognome** (obbligatori), poi se utili **Data di nascita**, **Sesso**, **Codice identificativo** (numero di cartella o altro riferimento interno) e **Note**.
@@ -93,7 +99,9 @@ L'età viene calcolata dalla data di nascita e stampata nel report accanto alla 
 - La matita in alto apre **Modifica persona**; il cestino elimina la scheda.
 - Toccando una valutazione si apre il suo dettaglio.
 
-**Eliminare una persona** cancella anche tutte le sue valutazioni, dopo conferma. L'operazione non si può annullare: in caso di dubbio esportare prima i report PDF.
+> **Attenzione**
+>
+> **Eliminare una persona** cancella anche tutte le sue valutazioni, dopo conferma. L'operazione non si può annullare: in caso di dubbio esportare prima i report PDF.
 
 ## Strumenti disponibili
 
@@ -111,7 +119,9 @@ La sezione **Strumenti** elenca dieci scale e schede. Per ciascuna il pulsante *
 | TAI 4.0 – Trasferimenti con sollevatore | TAI-S | Trasferimenti con sollevatore meccanico | Come sopra; 5 voci | 10 minuti per trasferimento |
 | Scheda di valutazione regionale | Regionale | Disabilità, accesso ai servizi diurni e residenziali | Classe da A (particolare gravità) a E (lieve), calcolata dalle schede A e B | Dopo osservazione e colloquio |
 
-Le particolarità di compilazione di ogni strumento sono nella sezione «Guide per strumento».
+> **Nota**
+>
+> Le particolarità di compilazione di ogni strumento sono nella sezione «Guide per strumento».
 
 ## Compilare una valutazione
 
@@ -119,12 +129,12 @@ Il modulo è uguale per tutti gli strumenti: in alto il riquadro del punteggio, 
 
 **Riquadro del punteggio**: mostra il totale e il massimo, quante voci sono compilate sul totale richiesto e, quando lo strumento le prevede, la fascia interpretativa o la percentuale. Si aggiorna a ogni risposta.
 
-**Dati della valutazione**
+### Dati della valutazione
 
 - **Data della valutazione** (oggi, modificabile dal calendario), **Valutatore** (proposto dal profilo) e **Contesto** (domicilio, reparto, ambulatorio…).
 - Campi propri dello strumento, se previsti: ad esempio il compito osservato nella PQRS, le modalità di locomozione nella FIM, il **tipo di carrozzina** nella TAI (pulsanti a scelta) o il codice fiscale nella scheda regionale.
 
-**Tipi di risposta**
+### Tipi di risposta
 
 | Tipo | Come si compila | Dove si trova |
 | --- | --- | --- |
@@ -141,7 +151,7 @@ Il modulo è uguale per tutti gli strumenti: in alto il riquadro del punteggio, 
 
 **Osservazioni**: il campo in fondo raccoglie note cliniche, ausili usati e condizioni della valutazione.
 
-**Salvare**
+### Salvare
 
 - Si può salvare in qualunque momento. Se mancano voci, la barra in basso avvisa «Mancano N voci: la valutazione verrà salvata come parziale» e negli elenchi il punteggio porta la dicitura **parziale**.
 - Una valutazione parziale si completa in seguito con **Modifica**: comodo per l'AFMS, che si somministra in più sessioni.
@@ -151,36 +161,36 @@ Il modulo è uguale per tutti gli strumenti: in alto il riquadro del punteggio, 
 
 Ogni strumento ha le proprie istruzioni complete nella sua **Scheda**; qui le particolarità che cambiano il modo di compilare.
 
-**Indice di Barthel Modificato**
+### Indice di Barthel Modificato
 
 - Dieci attività con cinque livelli ponderati (i punti variano da attività ad attività).
 - Per la mobilità scegliere con i due pulsanti tra **Deambulazione** e **Carrozzina**: si compila solo l'alternativa in uso.
 - Il totale 0–100 ricade in una fascia (dipendenza totale, grave, moderata, lieve, minima, indipendenza), visibile solo a valutazione completa.
 
-**Osservazione ADL**
+### Osservazione ADL
 
 - Descrivere il compito osservato nel campo dedicato, poi valutare da 0 a 3 le tre fasi: orientamento, esecuzione e controllo.
 - L'**indipendenza** è calcolata automaticamente come il livello più alto tra le tre fasi e corrisponde a una fascia (autonomia completa, intervento verbale, intervento fisico, dipendenza).
 - Un solo campo di osservazioni generali, stampato per esteso nel report.
 
-**PQRS**
+### PQRS
 
 - Descrivere il compito, poi inserire **Completezza** e **Qualità** da 1 a 10.
 - Il punteggio PQRS è la media dei due valori arrotondata per difetto: i due valori e il risultato sono evidenziati nel modulo, nel dettaglio e nel report, con la formula del calcolo.
 
-**AFMS**
+### AFMS
 
 - Dieci prove a conteggio: dove c'è l'elenco delle sotto-prove segnare ciascuna con ✓ o ✗ durante la somministrazione; altrove inserire il numero di risposte corrette.
 - La **sezione 7** (fatture e assegni) è facoltativa: se non somministrata non conta né come mancante né nel massimo.
 - Il totale si legge come numero e percentuale di risposte corrette; i campi **Sessioni** e **Adattamenti** registrano come è avvenuta la somministrazione.
 
-**FIM**
+### FIM
 
 - Diciotto voci (A–R) su sette livelli, in due aree con subtotale: motoria (13–91) e cognitiva (5–35).
 - Per ogni voce il pulsante **Guida con l'albero decisionale** pone le domande del manuale (Sì/No, oppure il numero di episodi di incontinenza) e seleziona il livello; **Vescica** e **Alvo** percorrono due alberi e registrano il più basso.
 - Compilare i campi per la modalità di locomozione, comprensione ed espressione. Il totale ha senso solo con tutte le 18 voci.
 
-**TAI 4.0 (tre versioni)**
+### TAI 4.0 (tre versioni)
 
 - Scegliere prima il **tipo di carrozzina** nei dati: alcuni punteggi cambiano tra manuale ed elettrica e finché manca il modulo lo segnala in rosso. Nella versione autonoma indicare anche se si usa la tavoletta.
 - Le voci seguono le fasi del modulo; ogni trasferimento è un'area a sé. Il **Trasferimento 2** (ritorno) è facoltativo: se compilato, il totale è la media delle percentuali dei due trasferimenti.
@@ -188,7 +198,7 @@ Ogni strumento ha le proprie istruzioni complete nella sua **Scheda**; qui le pa
 - Le voci «segnare tutte le voci che si applicano» sommano anche i punteggi negativi senza scendere sotto 0. Le opzioni **n.a.** (niente braccioli, niente freni, nessun appoggio…) escono dal massimo.
 - Le misure sono in centimetri con il valore originale in pollici tra parentesi.
 
-**Scheda di valutazione regionale**
+### Scheda di valutazione regionale
 
 - Compilare i dati della persona e del servizio (codice fiscale, comune, servizio in cui la persona è già inserita).
 - **Scheda A**: otto categorie ICF con il qualificatore di capacità da 0 a 4. **Scheda B**: problemi di particolare gravità con 1 (no), 2 (sì senza interventi speciali) o 3 (sì con interventi speciali); le voci **Altro** sono facoltative e vanno specificate nella nota.
@@ -212,7 +222,7 @@ Dal dettaglio di una valutazione, **Report PDF** genera un documento A4 e ne mos
 - **Condividi** apre il menu di condivisione di Android: e-mail, WhatsApp, Drive, stampa tramite il servizio di stampa del telefono o qualunque altra app installata.
 - **Salva** apre la finestra di Android per scegliere la cartella (per esempio Download) e salva il file con il nome proposto `Sigla_Cognome_Nome_data.pdf`.
 
-**Contenuto del report**
+### Contenuto del report
 
 | Parte | Contenuto |
 | --- | --- |
@@ -225,25 +235,30 @@ Dal dettaglio di una valutazione, **Report PDF** genera un documento A4 e ne mos
 
 Il report sta in una sola pagina quando possibile: l'app prova tre densità di impaginazione e usa la prima che basta; gli strumenti lunghi (FIM, TAI) vanno su più pagine con l'intestazione della tabella ripetuta. Le valutazioni parziali si possono esportare: il report lo indica nel pannello del punteggio.
 
-I PDF generati per l'anteprima restano nella memoria temporanea dell'app finché non vengono salvati o condivisi; Android può eliminarli quando serve spazio.
+> **Nota**
+>
+> I PDF generati per l'anteprima restano nella memoria temporanea dell'app finché non vengono salvati o condivisi; Android può eliminarli quando serve spazio.
 
 ## Dati e privacy
 
 Persone, valutazioni e impostazioni sono salvate in un database locale nella memoria privata dell'app, non leggibile da altre app. L'app non usa la rete: nessun dato viene inviato a server esterni e non esistono account.
 
-**Copie di sicurezza**
+### Copie di sicurezza
 
 - Se sul telefono è attivo il **backup di Google** (Impostazioni di Android → Google → Backup), il database e le impostazioni dell'app sono inclusi e vengono ripristinati sul nuovo telefono al primo avvio, o trasferiti con la procedura di passaggio da un dispositivo all'altro.
 - Non esiste ancora un'esportazione dell'intero archivio dall'app: per conservare una valutazione fuori dal telefono salvare o condividere il suo report PDF.
-- **Disinstallare l'app cancella tutti i dati** (salvo il ripristino dal backup di Google). Per aggiornare non serve disinstallare.
 
-**Dati personali e sanitari**
+> **Attenzione**
+>
+> **Disinstallare l'app cancella tutti i dati** (salvo il ripristino dal backup di Google). Per aggiornare non serve disinstallare.
+
+### Dati personali e sanitari
 
 - Il telefono dovrebbe essere protetto da blocco schermo e, se contiene dati di persone assistite, usato secondo le regole della struttura e la normativa sulla protezione dei dati.
 - I report PDF contengono dati personali e sanitari: ogni pagina porta l'avviso di riservatezza. Condividerli solo con canali ammessi dalla struttura.
 - Il **Codice identificativo** permette, se si preferisce, di archiviare le persone con un riferimento interno al posto di dati ulteriori.
 
-Il carattere tipografico dei report è Roboto (Google, licenza Apache 2.0); le immagini della TAI sono tratte dal modulo originale.
+*Il carattere tipografico dei report è Roboto (Google, licenza Apache 2.0); le immagini della TAI sono tratte dal modulo originale.*
 
 ## Risoluzione dei problemi e domande frequenti
 
@@ -259,7 +274,7 @@ Il carattere tipografico dei report è Roboto (Google, licenza Apache 2.0); le i
 | Ho eliminato una persona per errore | Non c'è recupero nell'app; i dati tornano solo da un backup di Google eseguito prima dell'eliminazione. |
 | Il nome del valutatore è sbagliato in un report | Correggerlo nel campo **Valutatore** della valutazione (vale per quel report) o in **Impostazioni** (vale per le nuove valutazioni). |
 
-**Domande frequenti**
+### Domande frequenti
 
 - **Posso usare l'app su più dispositivi con lo stesso archivio?** No: ogni dispositivo ha il proprio archivio locale. I report PDF si condividono liberamente.
 - **Serve Internet?** Solo per scaricare l'APK. Tutto il resto funziona offline.
@@ -267,4 +282,6 @@ Il carattere tipografico dei report è Roboto (Google, licenza Apache 2.0); le i
 - **Le scale sono quelle originali?** Le voci, i livelli e i punteggi sono trascritti dai manuali e dai moduli originali, in italiano; ogni Scheda riporta il riferimento bibliografico. Le interpretazioni cliniche restano al valutatore.
 - **Come segnalo un problema o chiedo una nuova scala?** Dalla pagina del progetto su GitHub (sezione Issues) o direttamente all'autore.
 
-**Versione Windows**: la stessa app esiste come programma portatile per Windows 11 (ZIP nella pagina Releases), con archivio separato nella cartella `Dati` accanto al programma. Le valutazioni non si sincronizzano tra telefono e computer.
+> **Versione Windows**
+>
+> La stessa app esiste come programma portatile per Windows 11 (ZIP nella pagina Releases), con archivio separato nella cartella `Dati` accanto al programma. Le valutazioni non si sincronizzano tra telefono e computer.
